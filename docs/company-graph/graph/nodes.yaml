@@ -1,0 +1,56 @@
+nodes:
+  - id: company-graph-home
+    kind: index
+    title: Company Graph Home
+    path: docs/company-graph/README.md
+    intent_tags: [index, navigation]
+  - id: conventions
+    kind: index
+    title: Company Graph Conventions
+    path: docs/company-graph/_conventions.md
+    intent_tags: [conventions, structure]
+  - id: product-overview
+    kind: product
+    title: Product Overview
+    path: docs/company-graph/product/overview.md
+    intent_tags: [product-summary]
+  - id: core-user-journey
+    kind: flow
+    title: Core User Journey
+    path: docs/company-graph/flows/core-user-journey.md
+    intent_tags: [journey, lifecycle]
+  - id: concepts-home
+    kind: index
+    title: Concepts Home
+    path: docs/company-graph/concepts/README.md
+    intent_tags: [concepts]
+  - id: identity-and-ownership
+    kind: concept
+    title: Identity And Ownership
+    path: docs/company-graph/concepts/identity-and-ownership.md
+    intent_tags: [identity, ownership]
+  - id: operations-home
+    kind: index
+    title: Operations Home
+    path: docs/company-graph/operations/README.md
+    intent_tags: [operations]
+  - id: documentation-update-workflow
+    kind: operations
+    title: Documentation Update Workflow
+    path: docs/company-graph/operations/documentation-update-workflow.md
+    intent_tags: [documentation, atlas]
+  - id: support-home
+    kind: support-index
+    title: Support Home
+    path: docs/company-graph/support/README.md
+    intent_tags: [support, navigation]
+  - id: support-triage-policy
+    kind: support-policy
+    title: Support Triage Policy
+    path: docs/company-graph/support/triage-policy.md
+    intent_tags: [support, triage]
+  - id: support-general-triage
+    kind: support-playbook
+    title: General Triage
+    path: docs/company-graph/support/playbooks/general-triage.md
+    intent_tags: [support, generic]

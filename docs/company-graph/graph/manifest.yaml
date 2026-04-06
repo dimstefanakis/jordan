@@ -1,0 +1,22 @@
+version: 0.1.0
+last_updated: 2026-04-06
+owner: jordan
+canonical_entrypoints:
+  - docs/company-graph/README.md
+  - docs/company-graph/_conventions.md
+  - docs/company-graph/product/overview.md
+  - docs/company-graph/support/triage-policy.md
+workbench_paths:
+  - groups/main/knowledge/
+source_repositories: []
+families:
+  - product
+  - flows
+  - concepts
+  - operations
+  - support
+retrieval_rules:
+  - prefer explicit docs over memory or guesswork
+  - prefer support playbooks over ad hoc replies
+  - prefer concept docs over inline re-explanations
+  - treat state-changing actions as human-required unless operations docs say otherwise

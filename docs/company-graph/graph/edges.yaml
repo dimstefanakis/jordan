@@ -1,0 +1,28 @@
+edges:
+  - from: company-graph-home
+    to: product-overview
+    relation: starts_with
+  - from: company-graph-home
+    to: support-home
+    relation: starts_with
+  - from: company-graph-home
+    to: conventions
+    relation: references
+  - from: product-overview
+    to: core-user-journey
+    relation: has_flow
+  - from: core-user-journey
+    to: support-triage-policy
+    relation: informs
+  - from: support-home
+    to: support-triage-policy
+    relation: starts_with
+  - from: support-triage-policy
+    to: support-general-triage
+    relation: governs
+  - from: concepts-home
+    to: identity-and-ownership
+    relation: contains
+  - from: operations-home
+    to: documentation-update-workflow
+    relation: contains

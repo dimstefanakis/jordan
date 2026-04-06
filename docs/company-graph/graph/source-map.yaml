@@ -1,0 +1,7 @@
+source_roots: []
+
+anchors:
+  - id: starter-placeholder
+    repo: local-project
+    path: docs/company-graph/README.md
+    topic: replace-this-anchor-with-real-source-links

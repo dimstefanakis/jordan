@@ -1,0 +1,27 @@
+default_requires_human_approval: true
+
+intents:
+  - id: unclear-request
+    title: Request is vague or incomplete
+    classification: ask-more-info
+    customer_reply_policy: reply_with_clarifying_question
+    requires_human_approval: false
+    related_docs:
+      - docs/company-graph/support/triage-policy.md
+      - docs/company-graph/support/playbooks/general-triage.md
+
+  - id: product-bug-report
+    title: User reports a likely product bug
+    classification: human-check-required
+    customer_reply_policy: acknowledge_and_escalate
+    requires_human_approval: true
+    related_docs:
+      - docs/company-graph/support/playbooks/general-triage.md
+
+  - id: account-or-access-issue
+    title: User cannot access the product or account
+    classification: human-check-required
+    customer_reply_policy: investigate_then_reply
+    requires_human_approval: true
+    related_docs:
+      - docs/company-graph/support/triage-policy.md
