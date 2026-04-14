@@ -9,12 +9,20 @@ import { readEnvFile } from './env.js';
 const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
-  'ATLAS_MODEL',
   'REFLECT_ENABLED',
   'REFLECT_MIN_HOURS',
   'REFLECT_MIN_MESSAGES',
   'REFLECT_MODEL',
   'REFLECT_POLL_INTERVAL_MS',
+  'ATLAS_MODEL',
+  'SKILL_DREAMER_ENABLED',
+  'SKILL_DREAMER_MIN_HOURS',
+  'SKILL_DREAMER_MIN_OUTCOMES',
+  'SKILL_DREAMER_MODEL',
+  'SKILL_DREAMER_POLL_INTERVAL_MS',
+  'SKILL_DREAMER_BACKFILL_ON_FIRST_RUN',
+  'SKILL_DREAMER_AUTOPROMOTE',
+  'SKILL_DREAMER_RETENTION_DAYS',
   'SLACK_ONLY',
 ]);
 
@@ -23,8 +31,6 @@ export const ASSISTANT_NAME =
 export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER ||
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
-export const ATLAS_MODEL =
-  process.env.ATLAS_MODEL || envConfig.ATLAS_MODEL || 'claude-sonnet-4-6';
 export const REFLECT_ENABLED =
   (process.env.REFLECT_ENABLED || envConfig.REFLECT_ENABLED || 'true') ===
   'true';
@@ -49,6 +55,57 @@ export const REFLECT_POLL_INTERVAL = parseInt(
     envConfig.REFLECT_POLL_INTERVAL_MS ||
     '1800000',
   10,
+);
+export const ATLAS_MODEL =
+  process.env.ATLAS_MODEL || envConfig.ATLAS_MODEL || REFLECT_MODEL;
+export const SKILL_DREAMER_ENABLED =
+  (process.env.SKILL_DREAMER_ENABLED ||
+    envConfig.SKILL_DREAMER_ENABLED ||
+    'true') === 'true';
+export const SKILL_DREAMER_MIN_HOURS = Math.max(
+  1,
+  parseInt(
+    process.env.SKILL_DREAMER_MIN_HOURS ||
+      envConfig.SKILL_DREAMER_MIN_HOURS ||
+      '24',
+    10,
+  ) || 24,
+);
+export const SKILL_DREAMER_MIN_OUTCOMES = Math.max(
+  1,
+  parseInt(
+    process.env.SKILL_DREAMER_MIN_OUTCOMES ||
+      envConfig.SKILL_DREAMER_MIN_OUTCOMES ||
+      '6',
+    10,
+  ) || 6,
+);
+export const SKILL_DREAMER_MODEL =
+  process.env.SKILL_DREAMER_MODEL ||
+  envConfig.SKILL_DREAMER_MODEL ||
+  REFLECT_MODEL;
+export const SKILL_DREAMER_POLL_INTERVAL = parseInt(
+  process.env.SKILL_DREAMER_POLL_INTERVAL_MS ||
+    envConfig.SKILL_DREAMER_POLL_INTERVAL_MS ||
+    String(REFLECT_POLL_INTERVAL),
+  10,
+);
+export const SKILL_DREAMER_BACKFILL_ON_FIRST_RUN =
+  (process.env.SKILL_DREAMER_BACKFILL_ON_FIRST_RUN ||
+    envConfig.SKILL_DREAMER_BACKFILL_ON_FIRST_RUN ||
+    'false') === 'true';
+export const SKILL_DREAMER_AUTOPROMOTE =
+  (process.env.SKILL_DREAMER_AUTOPROMOTE ||
+    envConfig.SKILL_DREAMER_AUTOPROMOTE ||
+    'true') === 'true';
+export const SKILL_DREAMER_RETENTION_DAYS = Math.max(
+  1,
+  parseInt(
+    process.env.SKILL_DREAMER_RETENTION_DAYS ||
+      envConfig.SKILL_DREAMER_RETENTION_DAYS ||
+      '30',
+    10,
+  ) || 30,
 );
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;

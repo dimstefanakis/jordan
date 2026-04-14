@@ -37,6 +37,7 @@ import {
   getRegisteredGroup,
   getRouterState,
   initDatabase,
+  logAgentTaskOutcome,
   setRegisteredGroup,
   setRouterState,
   setSession,
@@ -58,6 +59,7 @@ import { getSessionNamespace } from './session-namespace.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { askAtlas } from './company-graph-maintainer.js';
 import { startReflect } from './reflect.js';
+import { startSkillDreamer } from './skill-dreamer.js';
 import { prepareMessageContext } from './thread-context.js';
 import {
   Channel,
@@ -223,6 +225,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         prepareMessageContext(batch.messages),
         TIMEZONE,
       );
+      const outcomeStartedAt = new Date().toISOString();
+      const outcomeStartMs = Date.now();
+      const outcomeOutputs: string[] = [];
       lastAgentTimestamp[chatJid] =
         batch.messages[batch.messages.length - 1].timestamp;
       saveState();
@@ -248,6 +253,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
               `Agent output: ${raw.slice(0, 200)}`,
             );
             if (text) {
+              outcomeOutputs.push(text);
               await channel.sendMessage(chatJid, text, batch.sendOptions);
               outputSentToUser = true;
             }
@@ -270,6 +276,19 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       });
 
       if (output === 'error' || hadError) {
+        logAgentTaskOutcome({
+          source: 'message',
+          group_folder: group.folder,
+          chat_jid: chatJid,
+          prompt,
+          result:
+            outcomeOutputs.length > 0 ? outcomeOutputs.join('\n\n') : null,
+          status: 'error',
+          started_at: outcomeStartedAt,
+          completed_at: new Date().toISOString(),
+          duration_ms: Date.now() - outcomeStartMs,
+        });
+
         // If we already sent output to the user, keep the cursor where it is
         // for this batch and move on so later batches can still run.
         if (outputSentToUser) {
@@ -290,6 +309,18 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         );
         return false;
       }
+
+      logAgentTaskOutcome({
+        source: 'message',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        prompt,
+        result: outcomeOutputs.length > 0 ? outcomeOutputs.join('\n\n') : null,
+        status: 'success',
+        started_at: outcomeStartedAt,
+        completed_at: new Date().toISOString(),
+        duration_ms: Date.now() - outcomeStartMs,
+      });
 
       batchCursorStart = lastAgentTimestamp[chatJid];
     }
@@ -673,6 +704,9 @@ async function main(): Promise<void> {
   });
   queue.setProcessMessagesFn(processGroupMessages);
   startReflect({
+    registeredGroups: () => registeredGroups,
+  });
+  startSkillDreamer({
     registeredGroups: () => registeredGroups,
   });
   recoverPendingMessages();

@@ -93,6 +93,20 @@ export interface TaskRunLog {
   error: string | null;
 }
 
+export interface AgentTaskOutcome {
+  id?: number;
+  source: 'message' | 'scheduled_task';
+  group_folder: string;
+  chat_jid: string;
+  task_id?: string | null;
+  prompt: string;
+  result: string | null;
+  status: 'success' | 'error';
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+}
+
 // --- Channel abstraction ---
 
 export interface Channel {

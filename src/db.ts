@@ -7,6 +7,7 @@ import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import {
   NewMessage,
+  AgentTaskOutcome,
   RegisteredGroup,
   ScheduledTask,
   TaskRunLog,
@@ -65,6 +66,22 @@ function createSchema(database: Database.Database): void {
       FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)
     );
     CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);
+
+    CREATE TABLE IF NOT EXISTS agent_task_outcomes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      group_folder TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      task_id TEXT,
+      prompt TEXT NOT NULL,
+      result TEXT,
+      status TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT NOT NULL,
+      duration_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_task_outcomes_completed_at
+      ON agent_task_outcomes(completed_at);
 
     CREATE TABLE IF NOT EXISTS router_state (
       key TEXT PRIMARY KEY,
@@ -590,6 +607,75 @@ export function logTaskRun(log: TaskRunLog): void {
     log.result,
     log.error,
   );
+}
+
+const OUTCOME_TEXT_LIMIT = 20_000;
+
+function truncateOutcomeText(value: string): string {
+  if (value.length <= OUTCOME_TEXT_LIMIT) return value;
+  return `${value.slice(0, OUTCOME_TEXT_LIMIT)}\n[truncated]`;
+}
+
+export function logAgentTaskOutcome(outcome: AgentTaskOutcome): void {
+  db.prepare(
+    `
+    INSERT INTO agent_task_outcomes
+      (source, group_folder, chat_jid, task_id, prompt, result, status, started_at, completed_at, duration_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    outcome.source,
+    outcome.group_folder,
+    outcome.chat_jid,
+    outcome.task_id ?? null,
+    truncateOutcomeText(outcome.prompt),
+    outcome.result === null ? null : truncateOutcomeText(outcome.result),
+    outcome.status,
+    outcome.started_at,
+    outcome.completed_at,
+    outcome.duration_ms,
+  );
+}
+
+export function getAgentTaskOutcomesSince(
+  sinceCompletedAt: string,
+  limit: number = 100,
+  status?: AgentTaskOutcome['status'],
+): AgentTaskOutcome[] {
+  const statusClause = status ? 'AND status = ?' : '';
+  const params: unknown[] = [sinceCompletedAt];
+  if (status) params.push(status);
+  params.push(limit);
+
+  return db
+    .prepare(
+      `
+    SELECT id, source, group_folder, chat_jid, task_id, prompt, result, status, started_at, completed_at, duration_ms
+    FROM agent_task_outcomes
+    WHERE completed_at > ?
+      ${statusClause}
+    ORDER BY completed_at ASC, id ASC
+    LIMIT ?
+  `,
+    )
+    .all(...params) as AgentTaskOutcome[];
+}
+
+export function getLatestAgentTaskOutcomeCompletedAt(
+  status?: AgentTaskOutcome['status'],
+): string | null {
+  const statusClause = status ? 'WHERE status = ?' : '';
+  const params = status ? [status] : [];
+  const row = db
+    .prepare(
+      `
+    SELECT MAX(completed_at) as latest
+    FROM agent_task_outcomes
+    ${statusClause}
+  `,
+    )
+    .get(...params) as { latest?: string | null };
+  return row?.latest || null;
 }
 
 // --- Router state accessors ---

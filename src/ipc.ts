@@ -10,6 +10,12 @@ import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder, resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import {
+  isSkillManageAction,
+  manageSkill,
+  SkillManageRequest,
+  SkillManageResult,
+} from './skill-manager.js';
+import {
   RegisteredGroup,
   SendFileOptions,
   SendMessageOptions,
@@ -47,6 +53,7 @@ export interface IpcDeps {
     instruction: string,
     context?: string,
   ) => Promise<string>;
+  manageSkill?: (request: SkillManageRequest) => SkillManageResult;
 }
 
 let ipcWatcherRunning = false;
@@ -312,6 +319,13 @@ export async function processTaskIpc(
     requestId?: string;
     instruction?: string;
     context?: string;
+    action?: unknown;
+    content?: unknown;
+    file_path?: unknown;
+    file_content?: unknown;
+    old_string?: unknown;
+    new_string?: unknown;
+    replace_all?: unknown;
   },
   sourceGroup: string, // Verified identity from IPC directory
   isMain: boolean, // Verified from directory path
@@ -367,6 +381,73 @@ export async function processTaskIpc(
         logger.error(
           { err, sourceGroup, requestId: data.requestId },
           'Failed to process ask_atlas IPC task',
+        );
+      }
+      return;
+
+    case 'skill_manage':
+      if (typeof data.requestId !== 'string') {
+        logger.warn({ data }, 'Invalid skill_manage IPC payload');
+        return;
+      }
+
+      if (!isMain) {
+        writeResponse(data.requestId, {
+          success: false,
+          error: 'skill_manage can only be called from the main group.',
+        });
+        logger.warn(
+          { sourceGroup, requestId: data.requestId },
+          'Unauthorized skill_manage IPC task blocked',
+        );
+        return;
+      }
+
+      if (!isSkillManageAction(data.action) || typeof data.name !== 'string') {
+        writeResponse(data.requestId, {
+          success: false,
+          error: 'skill_manage requires a valid action and skill name.',
+        });
+        logger.warn({ data }, 'Invalid skill_manage IPC payload');
+        return;
+      }
+
+      try {
+        const result = (deps.manageSkill || manageSkill)({
+          action: data.action,
+          name: data.name,
+          content: typeof data.content === 'string' ? data.content : undefined,
+          file_path:
+            typeof data.file_path === 'string' ? data.file_path : undefined,
+          file_content:
+            typeof data.file_content === 'string'
+              ? data.file_content
+              : undefined,
+          old_string:
+            typeof data.old_string === 'string' ? data.old_string : undefined,
+          new_string:
+            typeof data.new_string === 'string' ? data.new_string : undefined,
+          replace_all:
+            typeof data.replace_all === 'boolean'
+              ? data.replace_all
+              : undefined,
+        });
+
+        writeResponse(data.requestId, result);
+        logger.info(
+          { sourceGroup, requestId: data.requestId, action: data.action },
+          'skill_manage response written via IPC',
+        );
+      } catch (err) {
+        const error =
+          err instanceof Error ? err.message : 'skill_manage request failed';
+        writeResponse(data.requestId, {
+          success: false,
+          error,
+        });
+        logger.error(
+          { err, sourceGroup, requestId: data.requestId },
+          'Failed to process skill_manage IPC task',
         );
       }
       return;

@@ -12,6 +12,7 @@ import {
   getAllTasks,
   getDueTasks,
   getTaskById,
+  logAgentTaskOutcome,
   logTaskRun,
   updateTask,
   updateTaskAfterRun,
@@ -80,6 +81,7 @@ async function runTask(
   deps: SchedulerDependencies,
 ): Promise<void> {
   const startTime = Date.now();
+  const startedAt = new Date().toISOString();
   let groupDir: string;
   try {
     groupDir = resolveGroupFolderPath(task.group_folder);
@@ -227,6 +229,18 @@ async function runTask(
     status: error ? 'error' : 'success',
     result,
     error,
+  });
+  logAgentTaskOutcome({
+    source: 'scheduled_task',
+    group_folder: task.group_folder,
+    chat_jid: task.chat_jid,
+    task_id: task.id,
+    prompt: task.prompt,
+    result: error ? error : result,
+    status: error ? 'error' : 'success',
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    duration_ms: durationMs,
   });
 
   const nextRun = computeNextRun(task);

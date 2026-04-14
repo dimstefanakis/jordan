@@ -42,6 +42,7 @@ const THIRD_GROUP: RegisteredGroup = {
 let groups: Record<string, RegisteredGroup>;
 let deps: IpcDeps;
 let askAtlasSpy: ReturnType<typeof vi.fn>;
+let manageSkillSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   _initTestDatabase();
@@ -49,6 +50,11 @@ beforeEach(() => {
     async (_sourceGroup: string, _instruction: string, _context?: string) =>
       'stubbed atlas response',
   );
+  manageSkillSpy = vi.fn(() => ({
+    success: true,
+    message: 'stubbed skill_manage response',
+    path: 'container/skills/reusable-workflow',
+  }));
 
   groups = {
     'main@g.us': MAIN_GROUP,
@@ -75,6 +81,7 @@ beforeEach(() => {
     getAvailableGroups: () => [],
     writeGroupsSnapshot: () => {},
     askAtlas: askAtlasSpy as unknown as IpcDeps['askAtlas'],
+    manageSkill: manageSkillSpy as unknown as IpcDeps['manageSkill'],
   };
 });
 
@@ -252,6 +259,118 @@ describe('ask_atlas authorization', () => {
       text?: string;
     };
     expect(payload.text).toBe('stubbed atlas response');
+  });
+});
+
+describe('skill_manage authorization', () => {
+  it('main group can manage active skills', async () => {
+    const requestId = 'skill-manage-main-request';
+
+    await processTaskIpc(
+      {
+        type: 'skill_manage',
+        requestId,
+        action: 'create',
+        name: 'reusable-workflow',
+        content:
+          '---\nname: reusable-workflow\ndescription: Reusable workflow.\n---\nUse it.\n',
+      },
+      'whatsapp_main',
+      true,
+      deps,
+    );
+
+    expect(manageSkillSpy).toHaveBeenCalledWith({
+      action: 'create',
+      name: 'reusable-workflow',
+      content:
+        '---\nname: reusable-workflow\ndescription: Reusable workflow.\n---\nUse it.\n',
+      file_path: undefined,
+      file_content: undefined,
+      old_string: undefined,
+      new_string: undefined,
+      replace_all: undefined,
+    });
+
+    const responsePath = path.join(
+      DATA_DIR,
+      'ipc',
+      'whatsapp_main',
+      'responses',
+      `${requestId}.json`,
+    );
+    const payload = JSON.parse(fs.readFileSync(responsePath, 'utf-8')) as {
+      success?: boolean;
+      message?: string;
+      path?: string;
+    };
+    expect(payload.success).toBe(true);
+    expect(payload.message).toBe('stubbed skill_manage response');
+    expect(payload.path).toBe('container/skills/reusable-workflow');
+  });
+
+  it('non-main group cannot manage active skills', async () => {
+    const requestId = 'skill-manage-other-request';
+
+    await processTaskIpc(
+      {
+        type: 'skill_manage',
+        requestId,
+        action: 'delete',
+        name: 'reusable-workflow',
+      },
+      'other-group',
+      false,
+      deps,
+    );
+
+    expect(manageSkillSpy).not.toHaveBeenCalled();
+
+    const responsePath = path.join(
+      DATA_DIR,
+      'ipc',
+      'other-group',
+      'responses',
+      `${requestId}.json`,
+    );
+    const payload = JSON.parse(fs.readFileSync(responsePath, 'utf-8')) as {
+      success?: boolean;
+      error?: string;
+    };
+    expect(payload.success).toBe(false);
+    expect(payload.error).toContain('main group');
+  });
+
+  it('rejects malformed skill_manage payloads', async () => {
+    const requestId = 'skill-manage-invalid-request';
+
+    await processTaskIpc(
+      {
+        type: 'skill_manage',
+        requestId,
+        action: 'totally-invalid',
+        name: 'reusable-workflow',
+      },
+      'whatsapp_main',
+      true,
+      deps,
+    );
+
+    expect(manageSkillSpy).not.toHaveBeenCalled();
+
+    const responsePath = path.join(
+      DATA_DIR,
+      'ipc',
+      'whatsapp_main',
+      'responses',
+      `${requestId}.json`,
+    );
+    const payload = JSON.parse(fs.readFileSync(responsePath, 'utf-8')) as {
+      success?: boolean;
+      error?: string;
+    };
+    expect(payload.success).toBe(false);
+    expect(payload.error).toContain('valid action');
   });
 });
 

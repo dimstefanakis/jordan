@@ -22,6 +22,16 @@ const threadTs = process.env.NANOCLAW_THREAD_TS || undefined;
 const groupFolder = process.env.NANOCLAW_GROUP_FOLDER!;
 const isMain = process.env.NANOCLAW_IS_MAIN === '1';
 
+type IpcToolResponse = {
+  text?: string;
+  error?: string;
+  success?: boolean;
+  message?: string;
+  path?: string;
+  backupPath?: string;
+  filesModified?: string[];
+};
+
 function resolveWorkspaceGroupFile(filePath: string): string {
   const normalized = path.resolve(filePath);
   if (
@@ -57,7 +67,7 @@ function writeIpcFile(dir: string, data: object): string {
 async function waitForIpcResponse(
   requestId: string,
   timeoutMs?: number,
-): Promise<{ text?: string; error?: string }> {
+): Promise<IpcToolResponse> {
   const responsePath = path.join(RESPONSES_DIR, `${requestId}.json`);
 
   while (true) {
@@ -66,11 +76,20 @@ async function waitForIpcResponse(
         const payload = JSON.parse(fs.readFileSync(responsePath, 'utf-8')) as {
           text?: string;
           error?: string;
+          success?: boolean;
+          message?: string;
+          path?: string;
+          backupPath?: string;
+          filesModified?: string[];
         };
         fs.unlinkSync(responsePath);
         return payload;
       } catch (err) {
-        try { fs.unlinkSync(responsePath); } catch { /* ignore */ }
+        try {
+          fs.unlinkSync(responsePath);
+        } catch {
+          /* ignore */
+        }
         throw err;
       }
     }
@@ -96,7 +115,12 @@ server.tool(
   "Send a message to the user or group immediately while you're still running. Use this for progress updates or to send multiple messages. You can call this multiple times.",
   {
     text: z.string().describe('The message text to send'),
-    sender: z.string().optional().describe('Your role/identity name (e.g. "Researcher"). When set, messages appear from a dedicated bot in Telegram.'),
+    sender: z
+      .string()
+      .optional()
+      .describe(
+        'Your role/identity name (e.g. "Researcher"). When set, messages appear from a dedicated bot in Telegram.',
+      ),
   },
   async (args) => {
     const data: Record<string, string | undefined> = {
@@ -122,7 +146,9 @@ server.tool(
     message_id: z.string().describe('The message ID/timestamp to react to'),
     emoji: z
       .string()
-      .describe('Emoji name to use, with or without colons (e.g. robot_face or :robot_face:)'),
+      .describe(
+        'Emoji name to use, with or without colons (e.g. robot_face or :robot_face:)',
+      ),
   },
   async (args) => {
     writeIpcFile(MESSAGES_DIR, {
@@ -177,13 +203,19 @@ server.tool(
 if (isMain) {
   server.tool(
     'ask_atlas',
-    "Ask Atlas to update the company graph. Atlas is the knowledge maintainer — he reads the current docs, follows the conventions, and makes the edit. Use this when you learn something that should become durable company knowledge: product behavior, support policy, operational procedures, concept definitions, or corrections to existing docs. Atlas will decide where to place it and how to structure it.",
+    'Ask Atlas to update the company graph. Atlas is the knowledge maintainer — he reads the current docs, follows the conventions, and makes the edit. Use this when you learn something that should become durable company knowledge: product behavior, support policy, operational procedures, concept definitions, or corrections to existing docs. Atlas will decide where to place it and how to structure it.',
     {
-      instruction: z.string().describe('What to update in the company graph — be specific about the fact, behavior, or policy change'),
+      instruction: z
+        .string()
+        .describe(
+          'What to update in the company graph — be specific about the fact, behavior, or policy change',
+        ),
       context: z
         .string()
         .optional()
-        .describe('Supporting detail: conversation excerpts, user reports, decisions, or what you already know'),
+        .describe(
+          'Supporting detail: conversation excerpts, user reports, decisions, or what you already know',
+        ),
     },
     async (args) => {
       const requestId = `atlas-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -206,7 +238,120 @@ if (isMain) {
       }
 
       return {
-        content: [{ type: 'text' as const, text: response.text || 'Atlas had no changes to make.' }],
+        content: [
+          {
+            type: 'text' as const,
+            text: response.text || 'Atlas had no changes to make.',
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    'skill_manage',
+    `Create, edit, patch, or delete active agent skills. Use this when a workflow has proven reusable, when you just overcame a tricky repeated failure, or when a skill you relied on is stale or incomplete.
+
+This is direct active skill mutation, not a draft proposal. The host validates every change, blocks permission-escalation frontmatter, scans for secrets, writes an audit record, and keeps backups for rollback.
+
+Actions:
+create - add a new top-level active skill at container/skills/<name>/SKILL.md.
+edit - replace an existing skill's SKILL.md.
+patch - replace exact text in SKILL.md or a supporting file.
+delete - remove an existing skill while keeping a backup.
+write_file - write a supporting file under references/, templates/, scripts/, or assets/.
+remove_file - remove a supporting file under references/, templates/, scripts/, or assets/.
+
+Use create only for durable procedures, not one-off facts. Prefer patch/edit when an existing skill already covers the workflow.`,
+    {
+      action: z.enum([
+        'create',
+        'edit',
+        'patch',
+        'delete',
+        'write_file',
+        'remove_file',
+      ]),
+      name: z
+        .string()
+        .describe(
+          'Skill name from frontmatter, lowercase letters/numbers/dots/underscores/hyphens only, e.g. "incident-investigation"',
+        ),
+      content: z
+        .string()
+        .optional()
+        .describe(
+          'Full SKILL.md content for create or edit. Must include YAML frontmatter with name and description.',
+        ),
+      file_path: z
+        .string()
+        .optional()
+        .describe(
+          'For patch/write_file/remove_file. Use "SKILL.md" or a supporting path under references/, templates/, scripts/, or assets/.',
+        ),
+      file_content: z
+        .string()
+        .optional()
+        .describe('File content for write_file. Text files only.'),
+      old_string: z
+        .string()
+        .optional()
+        .describe(
+          'Exact text to replace for patch. Must be unique unless replace_all is true.',
+        ),
+      new_string: z
+        .string()
+        .optional()
+        .describe('Replacement text for patch. May be empty to delete text.'),
+      replace_all: z
+        .boolean()
+        .default(false)
+        .describe('For patch only. Replace every occurrence of old_string.'),
+    },
+    async (args) => {
+      const requestId = `skill-manage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      writeIpcFile(TASKS_DIR, {
+        type: 'skill_manage',
+        requestId,
+        action: args.action,
+        name: args.name,
+        content: args.content || undefined,
+        file_path: args.file_path || undefined,
+        file_content: args.file_content ?? undefined,
+        old_string: args.old_string || undefined,
+        new_string: args.new_string ?? undefined,
+        replace_all: args.replace_all,
+        groupFolder,
+        timestamp: new Date().toISOString(),
+      });
+
+      const response = await waitForIpcResponse(requestId);
+      if (response.error || response.success === false) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: response.error || 'skill_manage request failed.',
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const details = [
+        response.message || 'skill_manage request completed.',
+        response.path ? `Path: ${response.path}` : '',
+        response.backupPath ? `Backup: ${response.backupPath}` : '',
+        response.filesModified?.length
+          ? `Files modified:\n${response.filesModified.map((file) => `- ${file}`).join('\n')}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      return {
+        content: [{ type: 'text' as const, text: details }],
       };
     },
   );
@@ -236,11 +381,33 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
 \u2022 interval: Milliseconds between runs (e.g., "300000" for 5 minutes, "3600000" for 1 hour)
 \u2022 once: Local time WITHOUT "Z" suffix (e.g., "2026-02-01T15:30:00"). Do NOT use UTC/Z suffix.`,
   {
-    prompt: z.string().describe('What the agent should do when the task runs. For isolated mode, include all necessary context here.'),
-    schedule_type: z.enum(['cron', 'interval', 'once']).describe('cron=recurring at specific times, interval=recurring every N ms, once=run once at specific time'),
-    schedule_value: z.string().describe('cron: "*/5 * * * *" | interval: milliseconds like "300000" | once: local timestamp like "2026-02-01T15:30:00" (no Z suffix!)'),
-    context_mode: z.enum(['group', 'isolated']).default('group').describe('group=runs with chat history and memory, isolated=fresh session (include context in prompt)'),
-    target_group_jid: z.string().optional().describe('(Main group only) JID of the group to schedule the task for. Defaults to the current group.'),
+    prompt: z
+      .string()
+      .describe(
+        'What the agent should do when the task runs. For isolated mode, include all necessary context here.',
+      ),
+    schedule_type: z
+      .enum(['cron', 'interval', 'once'])
+      .describe(
+        'cron=recurring at specific times, interval=recurring every N ms, once=run once at specific time',
+      ),
+    schedule_value: z
+      .string()
+      .describe(
+        'cron: "*/5 * * * *" | interval: milliseconds like "300000" | once: local timestamp like "2026-02-01T15:30:00" (no Z suffix!)',
+      ),
+    context_mode: z
+      .enum(['group', 'isolated'])
+      .default('group')
+      .describe(
+        'group=runs with chat history and memory, isolated=fresh session (include context in prompt)',
+      ),
+    target_group_jid: z
+      .string()
+      .optional()
+      .describe(
+        '(Main group only) JID of the group to schedule the task for. Defaults to the current group.',
+      ),
   },
   async (args) => {
     // Validate schedule_value before writing IPC
@@ -249,7 +416,12 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
         CronExpressionParser.parse(args.schedule_value);
       } catch {
         return {
-          content: [{ type: 'text' as const, text: `Invalid cron: "${args.schedule_value}". Use format like "0 9 * * *" (daily 9am) or "*/5 * * * *" (every 5 min).` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid cron: "${args.schedule_value}". Use format like "0 9 * * *" (daily 9am) or "*/5 * * * *" (every 5 min).`,
+            },
+          ],
           isError: true,
         };
       }
@@ -257,28 +429,47 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
       const ms = parseInt(args.schedule_value, 10);
       if (isNaN(ms) || ms <= 0) {
         return {
-          content: [{ type: 'text' as const, text: `Invalid interval: "${args.schedule_value}". Must be positive milliseconds (e.g., "300000" for 5 min).` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid interval: "${args.schedule_value}". Must be positive milliseconds (e.g., "300000" for 5 min).`,
+            },
+          ],
           isError: true,
         };
       }
     } else if (args.schedule_type === 'once') {
-      if (/[Zz]$/.test(args.schedule_value) || /[+-]\d{2}:\d{2}$/.test(args.schedule_value)) {
+      if (
+        /[Zz]$/.test(args.schedule_value) ||
+        /[+-]\d{2}:\d{2}$/.test(args.schedule_value)
+      ) {
         return {
-          content: [{ type: 'text' as const, text: `Timestamp must be local time without timezone suffix. Got "${args.schedule_value}" — use format like "2026-02-01T15:30:00".` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Timestamp must be local time without timezone suffix. Got "${args.schedule_value}" — use format like "2026-02-01T15:30:00".`,
+            },
+          ],
           isError: true,
         };
       }
       const date = new Date(args.schedule_value);
       if (isNaN(date.getTime())) {
         return {
-          content: [{ type: 'text' as const, text: `Invalid timestamp: "${args.schedule_value}". Use local time format like "2026-02-01T15:30:00".` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid timestamp: "${args.schedule_value}". Use local time format like "2026-02-01T15:30:00".`,
+            },
+          ],
           isError: true,
         };
       }
     }
 
     // Non-main groups can only schedule for themselves
-    const targetJid = isMain && args.target_group_jid ? args.target_group_jid : chatJid;
+    const targetJid =
+      isMain && args.target_group_jid ? args.target_group_jid : chatJid;
 
     const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -297,7 +488,12 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
     writeIpcFile(TASKS_DIR, data);
 
     return {
-      content: [{ type: 'text' as const, text: `Task ${taskId} scheduled: ${args.schedule_type} - ${args.schedule_value}` }],
+      content: [
+        {
+          type: 'text' as const,
+          text: `Task ${taskId} scheduled: ${args.schedule_type} - ${args.schedule_value}`,
+        },
+      ],
     };
   },
 );
@@ -311,30 +507,56 @@ server.tool(
 
     try {
       if (!fs.existsSync(tasksFile)) {
-        return { content: [{ type: 'text' as const, text: 'No scheduled tasks found.' }] };
+        return {
+          content: [
+            { type: 'text' as const, text: 'No scheduled tasks found.' },
+          ],
+        };
       }
 
       const allTasks = JSON.parse(fs.readFileSync(tasksFile, 'utf-8'));
 
       const tasks = isMain
         ? allTasks
-        : allTasks.filter((t: { groupFolder: string }) => t.groupFolder === groupFolder);
+        : allTasks.filter(
+            (t: { groupFolder: string }) => t.groupFolder === groupFolder,
+          );
 
       if (tasks.length === 0) {
-        return { content: [{ type: 'text' as const, text: 'No scheduled tasks found.' }] };
+        return {
+          content: [
+            { type: 'text' as const, text: 'No scheduled tasks found.' },
+          ],
+        };
       }
 
       const formatted = tasks
         .map(
-          (t: { id: string; prompt: string; schedule_type: string; schedule_value: string; status: string; next_run: string }) =>
+          (t: {
+            id: string;
+            prompt: string;
+            schedule_type: string;
+            schedule_value: string;
+            status: string;
+            next_run: string;
+          }) =>
             `- [${t.id}] ${t.prompt.slice(0, 50)}... (${t.schedule_type}: ${t.schedule_value}) - ${t.status}, next: ${t.next_run || 'N/A'}`,
         )
         .join('\n');
 
-      return { content: [{ type: 'text' as const, text: `Scheduled tasks:\n${formatted}` }] };
+      return {
+        content: [
+          { type: 'text' as const, text: `Scheduled tasks:\n${formatted}` },
+        ],
+      };
     } catch (err) {
       return {
-        content: [{ type: 'text' as const, text: `Error reading tasks: ${err instanceof Error ? err.message : String(err)}` }],
+        content: [
+          {
+            type: 'text' as const,
+            text: `Error reading tasks: ${err instanceof Error ? err.message : String(err)}`,
+          },
+        ],
       };
     }
   },
@@ -355,7 +577,14 @@ server.tool(
 
     writeIpcFile(TASKS_DIR, data);
 
-    return { content: [{ type: 'text' as const, text: `Task ${args.task_id} pause requested.` }] };
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Task ${args.task_id} pause requested.`,
+        },
+      ],
+    };
   },
 );
 
@@ -374,7 +603,14 @@ server.tool(
 
     writeIpcFile(TASKS_DIR, data);
 
-    return { content: [{ type: 'text' as const, text: `Task ${args.task_id} resume requested.` }] };
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Task ${args.task_id} resume requested.`,
+        },
+      ],
+    };
   },
 );
 
@@ -393,7 +629,14 @@ server.tool(
 
     writeIpcFile(TASKS_DIR, data);
 
-    return { content: [{ type: 'text' as const, text: `Task ${args.task_id} cancellation requested.` }] };
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Task ${args.task_id} cancellation requested.`,
+        },
+      ],
+    };
   },
 );
 
@@ -403,18 +646,32 @@ server.tool(
   {
     task_id: z.string().describe('The task ID to update'),
     prompt: z.string().optional().describe('New prompt for the task'),
-    schedule_type: z.enum(['cron', 'interval', 'once']).optional().describe('New schedule type'),
-    schedule_value: z.string().optional().describe('New schedule value (see schedule_task for format)'),
+    schedule_type: z
+      .enum(['cron', 'interval', 'once'])
+      .optional()
+      .describe('New schedule type'),
+    schedule_value: z
+      .string()
+      .optional()
+      .describe('New schedule value (see schedule_task for format)'),
   },
   async (args) => {
     // Validate schedule_value if provided
-    if (args.schedule_type === 'cron' || (!args.schedule_type && args.schedule_value)) {
+    if (
+      args.schedule_type === 'cron' ||
+      (!args.schedule_type && args.schedule_value)
+    ) {
       if (args.schedule_value) {
         try {
           CronExpressionParser.parse(args.schedule_value);
         } catch {
           return {
-            content: [{ type: 'text' as const, text: `Invalid cron: "${args.schedule_value}".` }],
+            content: [
+              {
+                type: 'text' as const,
+                text: `Invalid cron: "${args.schedule_value}".`,
+              },
+            ],
             isError: true,
           };
         }
@@ -424,7 +681,12 @@ server.tool(
       const ms = parseInt(args.schedule_value, 10);
       if (isNaN(ms) || ms <= 0) {
         return {
-          content: [{ type: 'text' as const, text: `Invalid interval: "${args.schedule_value}".` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid interval: "${args.schedule_value}".`,
+            },
+          ],
           isError: true,
         };
       }
@@ -438,12 +700,21 @@ server.tool(
       timestamp: new Date().toISOString(),
     };
     if (args.prompt !== undefined) data.prompt = args.prompt;
-    if (args.schedule_type !== undefined) data.schedule_type = args.schedule_type;
-    if (args.schedule_value !== undefined) data.schedule_value = args.schedule_value;
+    if (args.schedule_type !== undefined)
+      data.schedule_type = args.schedule_type;
+    if (args.schedule_value !== undefined)
+      data.schedule_value = args.schedule_value;
 
     writeIpcFile(TASKS_DIR, data);
 
-    return { content: [{ type: 'text' as const, text: `Task ${args.task_id} update requested.` }] };
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Task ${args.task_id} update requested.`,
+        },
+      ],
+    };
   },
 );
 
@@ -453,15 +724,28 @@ server.tool(
 
 Use available_groups.json to find the JID for a group. The folder name must be channel-prefixed: "{channel}_{group-name}" (e.g., "whatsapp_family-chat", "telegram_dev-team", "discord_general"). Use lowercase with hyphens for the group name part.`,
   {
-    jid: z.string().describe('The chat JID (e.g., "120363336345536173@g.us", "tg:-1001234567890", "dc:1234567890123456")'),
+    jid: z
+      .string()
+      .describe(
+        'The chat JID (e.g., "120363336345536173@g.us", "tg:-1001234567890", "dc:1234567890123456")',
+      ),
     name: z.string().describe('Display name for the group'),
-    folder: z.string().describe('Channel-prefixed folder name (e.g., "whatsapp_family-chat", "telegram_dev-team")'),
+    folder: z
+      .string()
+      .describe(
+        'Channel-prefixed folder name (e.g., "whatsapp_family-chat", "telegram_dev-team")',
+      ),
     trigger: z.string().describe('Trigger word (e.g., "@Andy")'),
   },
   async (args) => {
     if (!isMain) {
       return {
-        content: [{ type: 'text' as const, text: 'Only the main group can register new groups.' }],
+        content: [
+          {
+            type: 'text' as const,
+            text: 'Only the main group can register new groups.',
+          },
+        ],
         isError: true,
       };
     }
@@ -478,7 +762,12 @@ Use available_groups.json to find the JID for a group. The folder name must be c
     writeIpcFile(TASKS_DIR, data);
 
     return {
-      content: [{ type: 'text' as const, text: `Group "${args.name}" registered. It will start receiving messages immediately.` }],
+      content: [
+        {
+          type: 'text' as const,
+          text: `Group "${args.name}" registered. It will start receiving messages immediately.`,
+        },
+      ],
     };
   },
 );

@@ -8,9 +8,12 @@ import {
   getAllChats,
   getAllRegisteredGroups,
   getLatestMessageTimestampForChats,
+  getAgentTaskOutcomesSince,
+  getLatestAgentTaskOutcomeCompletedAt,
   getMessagesSince,
   getNewMessages,
   getTaskById,
+  logAgentTaskOutcome,
   setRegisteredGroup,
   storeChatMetadata,
   storeMessage,
@@ -322,6 +325,58 @@ describe('Reflect message queries', () => {
     expect(
       getLatestMessageTimestampForChats(['slack:main', 'slack:triage']),
     ).toBe('2024-01-01T00:00:04.000Z');
+  });
+});
+
+describe('agent task outcomes', () => {
+  it('stores and retrieves successful outcomes in completion order', () => {
+    logAgentTaskOutcome({
+      source: 'message',
+      group_folder: 'main',
+      chat_jid: 'slack:main',
+      prompt: 'first prompt',
+      result: 'first result',
+      status: 'success',
+      started_at: '2026-04-13T10:00:00.000Z',
+      completed_at: '2026-04-13T10:01:00.000Z',
+      duration_ms: 60_000,
+    });
+    logAgentTaskOutcome({
+      source: 'scheduled_task',
+      group_folder: 'main',
+      chat_jid: 'slack:main',
+      task_id: 'task-1',
+      prompt: 'second prompt',
+      result: 'second result',
+      status: 'success',
+      started_at: '2026-04-13T11:00:00.000Z',
+      completed_at: '2026-04-13T11:01:00.000Z',
+      duration_ms: 60_000,
+    });
+    logAgentTaskOutcome({
+      source: 'message',
+      group_folder: 'main',
+      chat_jid: 'slack:main',
+      prompt: 'failed prompt',
+      result: 'failed result',
+      status: 'error',
+      started_at: '2026-04-13T12:00:00.000Z',
+      completed_at: '2026-04-13T12:01:00.000Z',
+      duration_ms: 60_000,
+    });
+
+    const outcomes = getAgentTaskOutcomesSince(
+      '2026-04-13T10:30:00.000Z',
+      10,
+      'success',
+    );
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0].task_id).toBe('task-1');
+    expect(outcomes[0].prompt).toBe('second prompt');
+    expect(getLatestAgentTaskOutcomeCompletedAt('success')).toBe(
+      '2026-04-13T11:01:00.000Z',
+    );
   });
 });
 
