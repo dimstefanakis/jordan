@@ -9,15 +9,15 @@ describe('getSessionNamespace', () => {
   });
 
   it('reuses the same namespace for thread replies in the same channel', () => {
-    expect(
-      getSessionNamespace('slack_support', '1704067200.000000'),
-    ).toBe('slack_support');
+    expect(getSessionNamespace('slack_support', '1704067200.000000')).toBe(
+      'slack_support',
+    );
   });
 
   it('reuses the same namespace across different Slack threads', () => {
-    expect(
-      getSessionNamespace('slack_support', '1704067200.000000'),
-    ).toBe(getSessionNamespace('slack_support', '1704067201.000000'));
+    expect(getSessionNamespace('slack_support', '1704067200.000000')).toBe(
+      getSessionNamespace('slack_support', '1704067201.000000'),
+    );
   });
 
   it('stays within the group-folder safety rules', () => {

@@ -177,7 +177,10 @@ export class SlackChannel implements Channel {
       let content = msg.text ?? '';
       if (this.botUserId && msg.subtype !== 'bot_message') {
         const mentionPattern = `<@${this.botUserId}>`;
-        if (content.includes(mentionPattern) && !TRIGGER_PATTERN.test(content)) {
+        if (
+          content.includes(mentionPattern) &&
+          !TRIGGER_PATTERN.test(content)
+        ) {
           content = `@${ASSISTANT_NAME} ${content}`;
         }
       }
@@ -211,10 +214,7 @@ export class SlackChannel implements Channel {
       this.botId = (auth as { bot_id?: string }).bot_id;
       logger.info({ botUserId: this.botUserId }, 'Connected to Slack');
     } catch (err) {
-      logger.warn(
-        { err },
-        'Connected to Slack but failed to get bot user ID',
-      );
+      logger.warn({ err }, 'Connected to Slack but failed to get bot user ID');
     }
 
     this.connected = true;
@@ -392,9 +392,7 @@ export class SlackChannel implements Channel {
     }
   }
 
-  private async resolveUserName(
-    userId: string,
-  ): Promise<string | undefined> {
+  private async resolveUserName(userId: string): Promise<string | undefined> {
     if (!userId) return undefined;
 
     const cached = this.userNameCache.get(userId);
@@ -478,8 +476,8 @@ export class SlackChannel implements Channel {
   private hasMeaningfulContent(msg: SlackMessageEventLike): boolean {
     return Boolean(
       (msg.text && msg.text.trim()) ||
-        (msg.files && msg.files.length > 0) ||
-        (msg.attachments && msg.attachments.length > 0),
+      (msg.files && msg.files.length > 0) ||
+      (msg.attachments && msg.attachments.length > 0),
     );
   }
 
@@ -508,7 +506,9 @@ export class SlackChannel implements Channel {
     }
 
     if (fileLines.length > 0) {
-      sections.push(`Slack files:\n${fileLines.map((line) => `- ${line}`).join('\n')}`);
+      sections.push(
+        `Slack files:\n${fileLines.map((line) => `- ${line}`).join('\n')}`,
+      );
     }
 
     if (attachmentLines.length > 0) {
@@ -556,7 +556,11 @@ export class SlackChannel implements Channel {
       file.name || file.title || `${fileId}.bin`,
     );
     const label = `File "${filename}"`;
-    const download = await this.downloadFileIfNeeded(file, groupFolder, filename);
+    const download = await this.downloadFileIfNeeded(
+      file,
+      groupFolder,
+      filename,
+    );
 
     return {
       label,
@@ -575,7 +579,10 @@ export class SlackChannel implements Channel {
   ): Promise<{ savedPath?: string; note?: string }> {
     const fileId = this.sanitizeFileName(file.id || 'slack-file');
     const relativePath = path.join('incoming', 'slack', fileId, filename);
-    const hostPath = path.join(resolveGroupFolderPath(groupFolder), relativePath);
+    const hostPath = path.join(
+      resolveGroupFolderPath(groupFolder),
+      relativePath,
+    );
     const containerPath = this.toContainerGroupPath(relativePath);
 
     if (fs.existsSync(hostPath)) {
@@ -643,7 +650,9 @@ export class SlackChannel implements Channel {
           .filter(Boolean);
 
         const meta = [
-          attachment.service_name ? `service: ${attachment.service_name}` : null,
+          attachment.service_name
+            ? `service: ${attachment.service_name}`
+            : null,
           attachment.title_link || attachment.from_url
             ? `link: ${attachment.title_link || attachment.from_url}`
             : null,
