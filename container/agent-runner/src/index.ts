@@ -387,6 +387,26 @@ async function runQuery(
       }
     }
   }
+
+  // Channel-specific main groups (for example, slack_main) should also inherit
+  // the canonical main-lane instructions from groups/main/CLAUDE.md without
+  // changing their own workspace or Claude session namespace.
+  const sharedMainDir = '/workspace/project/groups/main';
+  const sharedMainClaudeMd = path.join(sharedMainDir, 'CLAUDE.md');
+  if (containerInput.isMain && fs.existsSync(sharedMainClaudeMd)) {
+    try {
+      const groupRealPath = fs.realpathSync('/workspace/group');
+      const sharedMainRealPath = fs.realpathSync(sharedMainDir);
+      if (groupRealPath !== sharedMainRealPath) {
+        extraDirs.push(sharedMainDir);
+      }
+    } catch {
+      if (!extraDirs.includes(sharedMainDir)) {
+        extraDirs.push(sharedMainDir);
+      }
+    }
+  }
+
   if (extraDirs.length > 0) {
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }

@@ -121,13 +121,15 @@ For a main channel (responds to all messages):
 ```typescript
 registerGroup("slack:<channel-id>", {
   name: "<channel-name>",
-  folder: "slack_main",
+  folder: "main",
   trigger: `@${ASSISTANT_NAME}`,
   added_at: new Date().toISOString(),
   requiresTrigger: false,
   isMain: true,
 });
 ```
+
+Use `main` for the primary Slack control lane in this repo. Do not create `slack_main` for a fresh main Slack registration.
 
 For additional channels (trigger-only):
 
