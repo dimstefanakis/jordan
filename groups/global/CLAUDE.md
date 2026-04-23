@@ -1,6 +1,6 @@
-# Jordan Shared Memory
+# {{ASSISTANT_NAME}} Shared Memory
 
-This file is the shared memory layer used across Jordan's assistant surfaces.
+This file is the shared memory layer used across {{ASSISTANT_NAME}}'s assistant surfaces.
 
 ## Purpose
 
@@ -16,11 +16,11 @@ Do not use shared memory for:
 - temporary incidents or debugging notes
 - secrets or highly sensitive heuristics
 
-## Company Graph Relationship
+## Shared Knowledge Graph Relationship
 
-The company graph at `/workspace/project/docs/company-graph/` is the canonical documentation layer.
+The shared knowledge graph at `/workspace/project/docs/company-graph/` is the canonical documentation layer.
 
-- Put canonical product and workflow knowledge in the company graph.
+- Put canonical product and workflow knowledge in the shared knowledge graph.
 - Put concise reminders, conventions, and reusable preferences here.
 - If the graph is missing something durable, ask Atlas to update it instead of duplicating long explanations here.
 

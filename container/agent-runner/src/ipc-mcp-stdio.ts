@@ -203,12 +203,12 @@ server.tool(
 if (isMain) {
   server.tool(
     'ask_atlas',
-    'Ask Atlas to update the company graph. Atlas is the knowledge maintainer — he reads the current docs, follows the conventions, and makes the edit. Use this when you learn something that should become durable company knowledge: product behavior, support policy, operational procedures, concept definitions, or corrections to existing docs. Atlas will decide where to place it and how to structure it.',
+    'Ask Atlas to update the shared knowledge graph. Atlas is the knowledge maintainer — he reads the current docs, follows the conventions, and makes the edit. Use this when you learn something that should become durable organizational knowledge: product behavior, support policy, operational procedures, concept definitions, or corrections to existing docs. Atlas will decide where to place it and how to structure it.',
     {
       instruction: z
         .string()
         .describe(
-          'What to update in the company graph — be specific about the fact, behavior, or policy change',
+          'What to update in the shared knowledge graph — be specific about the fact, behavior, or policy change',
         ),
       context: z
         .string()

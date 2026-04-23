@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
+import { ASSISTANT_NAME } from './config.js';
 import {
   _initTestDatabase,
   createTask,
@@ -283,7 +284,7 @@ describe('Reflect message queries', () => {
       id: 'bot-1',
       chat_jid: 'slack:main',
       sender: 'BOT',
-      sender_name: 'Jordan',
+      sender_name: ASSISTANT_NAME,
       content: 'Yes, I will keep that in mind.',
       timestamp: '2024-01-01T00:00:02.000Z',
       is_from_me: true,

@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
 
-import { ATLAS_MODEL } from './config.js';
+import { ASSISTANT_NAME, ATLAS_MODEL } from './config.js';
 import {
   runContainerAgent,
   type ReadonlyProjectMount,
@@ -139,7 +139,9 @@ function diffSnapshots(
   return [...changed].sort();
 }
 
-async function stopRunningContainer(containerName: string | null): Promise<void> {
+async function stopRunningContainer(
+  containerName: string | null,
+): Promise<void> {
   try {
     fs.mkdirSync(path.dirname(COMPANY_GRAPH_CLOSE_SENTINEL), {
       recursive: true,
@@ -185,13 +187,13 @@ export function buildAtlasInstructionPrompt(
   context?: string,
 ): string {
   return [
-    'Jordan (or another teammate) is asking you to update the company graph.',
+    `${ASSISTANT_NAME} (or another teammate) is asking you to update the shared knowledge graph.`,
     '',
     'Your job is to update `/workspace/project/docs/company-graph` based on the instruction below.',
     '',
     'Required workflow:',
     '1. Read `docs/company-graph/_conventions.md` for structure rules, family definitions, and chapter templates.',
-    '2. Read the current company graph docs most relevant to the instruction.',
+    '2. Read the current shared knowledge graph docs most relevant to the instruction.',
     '3. Check `groups/main/knowledge/` when the instruction references raw notes, drafts, or source material that has not been normalized yet.',
     '4. Decide where the knowledge belongs using the decision tree in `_conventions.md`.',
     '5. Make the update: edit an existing chapter, create a new one, or split an overloaded one.',

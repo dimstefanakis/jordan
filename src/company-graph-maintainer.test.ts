@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { ASSISTANT_NAME } from './config.js';
 import {
   buildAtlasInstructionPrompt,
   runWithCompanyGraphWriteLock,
@@ -13,13 +14,15 @@ describe('buildAtlasInstructionPrompt', () => {
     );
 
     expect(prompt).toContain(
-      'Jordan (or another teammate) is asking you to update the company graph.',
+      `${ASSISTANT_NAME} (or another teammate) is asking you to update the shared knowledge graph.`,
     );
     expect(prompt).toContain('docs/company-graph/_conventions.md');
     expect(prompt).toContain('groups/main/knowledge/');
     expect(prompt).toContain('Status: updated | no_changes | needs_human');
     expect(prompt).toContain('Summary:');
-    expect(prompt).toContain('Context:\nThe team agreed this should live under operations.');
+    expect(prompt).toContain(
+      'Context:\nThe team agreed this should live under operations.',
+    );
   });
 });
 

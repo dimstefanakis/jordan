@@ -1,6 +1,6 @@
 # Main Knowledge Workbench
 
-This folder is the staging area for Jordan knowledge work.
+This folder is the staging area for the assistant's knowledge work.
 
 Use it for:
 

@@ -206,7 +206,7 @@ describe('ask_atlas authorization', () => {
       {
         type: 'ask_atlas',
         requestId,
-        instruction: 'Update the company graph',
+        instruction: 'Update the shared knowledge graph',
       },
       'other-group',
       false,

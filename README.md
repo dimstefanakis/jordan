@@ -1,8 +1,8 @@
-# Jordan
+# Assistant Starter
 
-Jordan is a general-purpose assistant starter built around a small, hackable orchestration layer:
+This repo is a general-purpose assistant starter built around a small, hackable orchestration layer:
 
-- `Jordan` as the main assistant
+- a configurable main assistant name
 - `Atlas` as the company-graph maintainer
 - `Reflect` as the background memory consolidator
 - a neutral `docs/company-graph/` scaffold you can adapt to your product or organization
@@ -41,7 +41,7 @@ Then run `/setup`.
 
 1. Rewrite `docs/company-graph/product/overview.md` for your actual domain.
 2. Add your first real flow doc in `docs/company-graph/flows/`.
-3. Update `groups/main/CLAUDE.md` with the tone and policies you want Jordan to follow.
+3. Set `ASSISTANT_NAME` during setup, then update `groups/main/CLAUDE.md` with the tone and policies you want your assistant to follow.
 4. Add any raw notes or imported docs to `groups/main/knowledge/`, then normalize them into the company graph.
 
 ## Key Files
@@ -51,7 +51,7 @@ Then run `/setup`.
 - `src/ipc.ts` - task and tool IPC
 - `src/reflect.ts` - background memory maintenance
 - `src/company-graph-maintainer.ts` - Atlas company-graph updates
-- `groups/main/CLAUDE.md` - Jordan's main prompt
+- `groups/main/CLAUDE.md` - the main assistant prompt
 - `groups/global/CLAUDE.md` - shared memory
 - `docs/company-graph/` - canonical documentation layer
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { ASSISTANT_NAME } from './config.js';
 import { buildReflectPrompt, shouldRunReflect } from './reflect.js';
 import { _initTestDatabase, storeChatMetadata } from './db.js';
 import { NewMessage, RegisteredGroup } from './types.js';
@@ -21,7 +22,7 @@ describe('buildReflectPrompt', () => {
       'slack:main': {
         name: 'main',
         folder: 'main',
-        trigger: '@Jordan',
+        trigger: `@${ASSISTANT_NAME}`,
         added_at: '2026-03-31T10:00:00.000Z',
         isMain: true,
         requiresTrigger: false,
@@ -61,12 +62,12 @@ describe('buildReflectPrompt', () => {
       {
         folder: 'main',
         filePath: '/workspace/group/CLAUDE.md',
-        scope: 'Jordan main Slack/admin lane memory',
+        scope: `${ASSISTANT_NAME} main Slack/admin lane memory`,
       },
       {
         folder: 'global',
         filePath: '/workspace/project/groups/global/CLAUDE.md',
-        scope: 'shared/company memory across assistant surfaces',
+        scope: 'shared/global memory across assistant surfaces',
       },
     ]);
 

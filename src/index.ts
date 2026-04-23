@@ -437,7 +437,7 @@ async function startMessageLoop(): Promise<void> {
   }
   messageLoopRunning = true;
 
-  logger.info(`Jordan running (trigger: @${ASSISTANT_NAME})`);
+  logger.info(`${ASSISTANT_NAME} running (trigger: @${ASSISTANT_NAME})`);
 
   while (true) {
     try {
@@ -724,7 +724,7 @@ const isDirectRun =
 
 if (isDirectRun) {
   main().catch((err) => {
-    logger.error({ err }, 'Failed to start Jordan');
+    logger.error({ err }, `Failed to start ${ASSISTANT_NAME}`);
     process.exit(1);
   });
 }

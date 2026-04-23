@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { ASSISTANT_NAME } from './config.js';
 import { _initTestDatabase, storeChatMetadata, storeMessage } from './db.js';
 import { prependThreadContext } from './thread-context.js';
 import { NewMessage } from './types.js';
@@ -39,7 +40,7 @@ describe('prependThreadContext', () => {
       id: '1704067210.000000',
       chat_jid: 'slack:C0123456789',
       sender: 'BOT',
-      sender_name: 'Jordan',
+      sender_name: ASSISTANT_NAME,
       content: 'assistant reply',
       timestamp: '2024-01-01T00:00:03.000Z',
       thread_ts: '1704067200.000000',
@@ -84,7 +85,7 @@ describe('prependThreadContext', () => {
       id: '1704067200.000000',
       chat_jid: 'slack:C0123456789',
       sender: 'BOT',
-      sender_name: 'Jordan',
+      sender_name: ASSISTANT_NAME,
       content: 'There are a handful of US market submissions here',
       timestamp: '2024-01-01T00:00:01.000Z',
       is_from_me: true,

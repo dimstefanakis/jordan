@@ -1,7 +1,7 @@
 ---
 id: product-overview
 type: product
-owner: jordan
+owner: assistant
 status: draft
 last_updated: 2026-04-06
 intent_tags: [product-summary, starter]
@@ -14,7 +14,7 @@ related:
 
 ## What It Is
 
-Describe the product or service Jordan supports.
+Describe the product or service this assistant supports.
 
 This starter file should answer the highest-level question: what exists, who it serves, and what outcomes matter.
 

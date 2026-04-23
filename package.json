@@ -1,7 +1,7 @@
 {
   "name": "jordan",
   "version": "1.2.12",
-  "description": "General-purpose Jordan assistant starter with Atlas and a company graph.",
+  "description": "General-purpose assistant starter with Atlas and a company graph.",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

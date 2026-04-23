@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 import Database from 'better-sqlite3';
 
+import {
+  applyAssistantNameTemplate,
+  ASSISTANT_NAME_PLACEHOLDER,
+  resolveRegistrationFolder,
+  upsertAssistantNameEnv,
+} from './register.js';
+
 /**
  * Tests for the register step.
  *
@@ -212,46 +219,74 @@ describe('parameterized SQL registration', () => {
   });
 });
 
-describe('file templating', () => {
-  it('replaces assistant name in CLAUDE.md content', () => {
-    let content = '# Andy\n\nYou are Andy, a personal assistant.';
-
-    content = content.replace(/^# Andy$/m, '# Nova');
-    content = content.replace(/You are Andy/g, 'You are Nova');
-
-    expect(content).toBe('# Nova\n\nYou are Nova, a personal assistant.');
+describe('resolveRegistrationFolder', () => {
+  it('normalizes slack_main to main for Slack main registration when main is free', () => {
+    expect(
+      resolveRegistrationFolder({
+        jid: 'slack:C123',
+        folder: 'slack_main',
+        channel: 'slack',
+        isMain: true,
+      }),
+    ).toBe('main');
   });
 
-  it('handles names with special regex characters', () => {
-    let content = '# Andy\n\nYou are Andy.';
+  it('keeps slack_main when main is already owned by another jid', () => {
+    expect(
+      resolveRegistrationFolder(
+        {
+          jid: 'slack:C123',
+          folder: 'slack_main',
+          channel: 'slack',
+          isMain: true,
+        },
+        'other-main-jid',
+      ),
+    ).toBe('slack_main');
+  });
 
-    const newName = 'C.L.A.U.D.E';
-    content = content.replace(/^# Andy$/m, `# ${newName}`);
-    content = content.replace(/You are Andy/g, `You are ${newName}`);
+  it('leaves non-main Slack folders unchanged', () => {
+    expect(
+      resolveRegistrationFolder({
+        jid: 'slack:C123',
+        folder: 'slack_reports',
+        channel: 'slack',
+        isMain: false,
+      }),
+    ).toBe('slack_reports');
+  });
+});
 
-    expect(content).toContain('# C.L.A.U.D.E');
-    expect(content).toContain('You are C.L.A.U.D.E.');
+describe('file templating', () => {
+  it('replaces assistant placeholder tokens in CLAUDE.md content', () => {
+    const content = `# ${ASSISTANT_NAME_PLACEHOLDER}\n\nYou are ${ASSISTANT_NAME_PLACEHOLDER}, a personal assistant.`;
+
+    expect(applyAssistantNameTemplate(content, 'Nova')).toBe(
+      '# Nova\n\nYou are Nova, a personal assistant.',
+    );
+  });
+
+  it('replaces legacy Jordan and Nora template text', () => {
+    const content =
+      "# Jordan\n\nYou are Jordan.\n\nNora's shared memory stays scoped.";
+
+    const rendered = applyAssistantNameTemplate(content, 'Nova');
+    expect(rendered).toContain('# Nova');
+    expect(rendered).toContain('You are Nova.');
+    expect(rendered).toContain("Nova's shared memory stays scoped.");
   });
 
   it('updates .env ASSISTANT_NAME line', () => {
-    let envContent = 'SOME_KEY=value\nASSISTANT_NAME="Andy"\nOTHER=test';
+    const envContent = 'SOME_KEY=value\nASSISTANT_NAME="Andy"\nOTHER=test';
 
-    envContent = envContent.replace(
-      /^ASSISTANT_NAME=.*$/m,
+    expect(upsertAssistantNameEnv(envContent, 'Nova')).toContain(
       'ASSISTANT_NAME="Nova"',
     );
-
-    expect(envContent).toContain('ASSISTANT_NAME="Nova"');
-    expect(envContent).toContain('SOME_KEY=value');
   });
 
   it('appends ASSISTANT_NAME to .env if not present', () => {
-    let envContent = 'SOME_KEY=value\n';
-
-    if (!envContent.includes('ASSISTANT_NAME=')) {
-      envContent += '\nASSISTANT_NAME="Nova"';
-    }
-
-    expect(envContent).toContain('ASSISTANT_NAME="Nova"');
+    expect(upsertAssistantNameEnv('SOME_KEY=value\n', 'Nova')).toContain(
+      'ASSISTANT_NAME="Nova"',
+    );
   });
 });

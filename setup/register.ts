@@ -9,7 +9,7 @@ import path from 'path';
 
 import Database from 'better-sqlite3';
 
-import { STORE_DIR } from '../src/config.js';
+import { ASSISTANT_NAME, STORE_DIR } from '../src/config.js';
 import { isValidGroupFolder } from '../src/group-folder.js';
 import { logger } from '../src/logger.js';
 import { emitStatus } from './status.js';
@@ -25,6 +25,54 @@ interface RegisterArgs {
   assistantName: string;
 }
 
+export const ASSISTANT_NAME_PLACEHOLDER = '{{ASSISTANT_NAME}}';
+
+const LEGACY_ASSISTANT_NAMES = ['Jordan', 'Nora'];
+
+export function resolveRegistrationFolder(
+  args: Pick<RegisterArgs, 'jid' | 'folder' | 'channel' | 'isMain'>,
+  existingMainOwnerJid?: string,
+): string {
+  if (
+    args.isMain &&
+    args.channel === 'slack' &&
+    args.folder === 'slack_main' &&
+    (!existingMainOwnerJid || existingMainOwnerJid === args.jid)
+  ) {
+    return 'main';
+  }
+
+  return args.folder;
+}
+
+export function applyAssistantNameTemplate(
+  content: string,
+  assistantName: string,
+): string {
+  let next = content.replaceAll(ASSISTANT_NAME_PLACEHOLDER, assistantName);
+
+  for (const legacyName of LEGACY_ASSISTANT_NAMES) {
+    next = next.replaceAll(legacyName, assistantName);
+  }
+
+  return next;
+}
+
+export function upsertAssistantNameEnv(
+  envContent: string,
+  assistantName: string,
+): string {
+  if (envContent.includes('ASSISTANT_NAME=')) {
+    return envContent.replace(
+      /^ASSISTANT_NAME=.*$/m,
+      `ASSISTANT_NAME="${assistantName}"`,
+    );
+  }
+
+  const suffix = envContent.endsWith('\n') || envContent.length === 0 ? '' : '\n';
+  return `${envContent}${suffix}ASSISTANT_NAME="${assistantName}"\n`;
+}
+
 function parseArgs(args: string[]): RegisterArgs {
   const result: RegisterArgs = {
     jid: '',
@@ -34,7 +82,7 @@ function parseArgs(args: string[]): RegisterArgs {
     channel: 'whatsapp', // backward-compat: pre-refactor installs omit --channel
     requiresTrigger: true,
     isMain: false,
-    assistantName: 'Jordan',
+    assistantName: ASSISTANT_NAME,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -61,7 +109,7 @@ function parseArgs(args: string[]): RegisterArgs {
         result.isMain = true;
         break;
       case '--assistant-name':
-        result.assistantName = args[++i] || 'Jordan';
+        result.assistantName = (args[++i] || '').trim() || ASSISTANT_NAME;
         break;
     }
   }
@@ -77,15 +125,6 @@ export async function run(args: string[]): Promise<void> {
     emitStatus('REGISTER_CHANNEL', {
       STATUS: 'failed',
       ERROR: 'missing_required_args',
-      LOG: 'logs/setup.log',
-    });
-    process.exit(4);
-  }
-
-  if (!isValidGroupFolder(parsed.folder)) {
-    emitStatus('REGISTER_CHANNEL', {
-      STATUS: 'failed',
-      ERROR: 'invalid_folder',
       LOG: 'logs/setup.log',
     });
     process.exit(4);
@@ -117,6 +156,34 @@ export async function run(args: string[]): Promise<void> {
   )`);
 
   const isMainInt = parsed.isMain ? 1 : 0;
+  const existingMainOwner = db
+    .prepare('SELECT jid FROM registered_groups WHERE folder = ?')
+    .get('main') as { jid: string } | undefined;
+  const resolvedFolder = resolveRegistrationFolder(
+    parsed,
+    existingMainOwner?.jid,
+  );
+
+  if (!isValidGroupFolder(resolvedFolder)) {
+    emitStatus('REGISTER_CHANNEL', {
+      STATUS: 'failed',
+      ERROR: 'invalid_folder',
+      LOG: 'logs/setup.log',
+    });
+    process.exit(4);
+  }
+
+  if (resolvedFolder !== parsed.folder) {
+    logger.info(
+      {
+        requestedFolder: parsed.folder,
+        resolvedFolder,
+        channel: parsed.channel,
+        isMain: parsed.isMain,
+      },
+      'Normalized registration folder',
+    );
+  }
 
   db.prepare(
     `INSERT OR REPLACE INTO registered_groups
@@ -125,7 +192,7 @@ export async function run(args: string[]): Promise<void> {
   ).run(
     parsed.jid,
     parsed.name,
-    parsed.folder,
+    resolvedFolder,
     parsed.trigger,
     timestamp,
     requiresTriggerInt,
@@ -136,68 +203,55 @@ export async function run(args: string[]): Promise<void> {
   logger.info('Wrote registration to SQLite');
 
   // Create group folders
-  fs.mkdirSync(path.join(projectRoot, 'groups', parsed.folder, 'logs'), {
+  fs.mkdirSync(path.join(projectRoot, 'groups', resolvedFolder, 'logs'), {
     recursive: true,
   });
 
-  // Update assistant name in CLAUDE.md files if different from default
+  const assistantName = parsed.assistantName.trim() || ASSISTANT_NAME;
   let nameUpdated = false;
-  if (parsed.assistantName !== 'Jordan') {
-    logger.info(
-      { from: 'Jordan', to: parsed.assistantName },
-      'Updating assistant name',
-    );
 
-    const mdFiles = [
-      path.join(projectRoot, 'groups', 'global', 'CLAUDE.md'),
-      path.join(projectRoot, 'groups', parsed.folder, 'CLAUDE.md'),
-    ];
+  logger.info({ assistantName }, 'Applying assistant name');
 
-    for (const mdFile of mdFiles) {
-      if (fs.existsSync(mdFile)) {
-        let content = fs.readFileSync(mdFile, 'utf-8');
-        content = content.replace(
-          /^# Jordan Shared Memory$/m,
-          `# ${parsed.assistantName} Shared Memory`,
-        );
-        content = content.replace(/^# Jordan$/m, `# ${parsed.assistantName}`);
-        content = content.replace(
-          /You are Jordan/g,
-          `You are ${parsed.assistantName}`,
-        );
-        fs.writeFileSync(mdFile, content);
-        logger.info({ file: mdFile }, 'Updated CLAUDE.md');
-      }
-    }
+  const mdFiles = new Set([
+    path.join(projectRoot, 'groups', 'main', 'CLAUDE.md'),
+    path.join(projectRoot, 'groups', 'global', 'CLAUDE.md'),
+    path.join(projectRoot, 'groups', resolvedFolder, 'CLAUDE.md'),
+  ]);
 
-    // Update .env
-    const envFile = path.join(projectRoot, '.env');
-    if (fs.existsSync(envFile)) {
-      let envContent = fs.readFileSync(envFile, 'utf-8');
-      if (envContent.includes('ASSISTANT_NAME=')) {
-        envContent = envContent.replace(
-          /^ASSISTANT_NAME=.*$/m,
-          `ASSISTANT_NAME="${parsed.assistantName}"`,
-        );
-      } else {
-        envContent += `\nASSISTANT_NAME="${parsed.assistantName}"`;
-      }
-      fs.writeFileSync(envFile, envContent);
-    } else {
-      fs.writeFileSync(envFile, `ASSISTANT_NAME="${parsed.assistantName}"\n`);
-    }
-    logger.info('Set ASSISTANT_NAME in .env');
+  for (const mdFile of mdFiles) {
+    if (!fs.existsSync(mdFile)) continue;
+
+    const content = fs.readFileSync(mdFile, 'utf-8');
+    const nextContent = applyAssistantNameTemplate(content, assistantName);
+    if (nextContent === content) continue;
+
+    fs.writeFileSync(mdFile, nextContent);
+    logger.info({ file: mdFile }, 'Updated CLAUDE.md');
     nameUpdated = true;
   }
+
+  const envFile = path.join(projectRoot, '.env');
+  if (fs.existsSync(envFile)) {
+    const envContent = fs.readFileSync(envFile, 'utf-8');
+    const nextEnvContent = upsertAssistantNameEnv(envContent, assistantName);
+    if (nextEnvContent !== envContent) {
+      fs.writeFileSync(envFile, nextEnvContent);
+      nameUpdated = true;
+    }
+  } else {
+    fs.writeFileSync(envFile, `ASSISTANT_NAME="${assistantName}"\n`);
+    nameUpdated = true;
+  }
+  logger.info('Set ASSISTANT_NAME in .env');
 
   emitStatus('REGISTER_CHANNEL', {
     JID: parsed.jid,
     NAME: parsed.name,
-    FOLDER: parsed.folder,
+    FOLDER: resolvedFolder,
     CHANNEL: parsed.channel,
     TRIGGER: parsed.trigger,
     REQUIRES_TRIGGER: parsed.requiresTrigger,
-    ASSISTANT_NAME: parsed.assistantName,
+    ASSISTANT_NAME: assistantName,
     NAME_UPDATED: nameUpdated,
     STATUS: 'success',
     LOG: 'logs/setup.log',

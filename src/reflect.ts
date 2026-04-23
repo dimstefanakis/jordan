@@ -5,6 +5,7 @@ import path from 'path';
 import { promisify } from 'util';
 
 import {
+  ASSISTANT_NAME,
   REFLECT_ENABLED,
   REFLECT_MIN_HOURS,
   REFLECT_MIN_MESSAGES,
@@ -148,7 +149,7 @@ function getReflectTargets(): ReflectTarget[] {
     targets.push({
       folder: 'main',
       filePath: '/workspace/group/CLAUDE.md',
-      scope: 'Jordan main Slack/admin lane memory',
+      scope: `${ASSISTANT_NAME} main Slack/admin lane memory`,
     });
   }
 
@@ -175,7 +176,7 @@ function getReflectTargets(): ReflectTarget[] {
       filePath: `/workspace/project/groups/${folder}/CLAUDE.md`,
       scope:
         folder === 'global'
-          ? 'shared/company memory across assistant surfaces'
+          ? 'shared/global memory across assistant surfaces'
           : `${folder} lane memory`,
     });
   }
@@ -249,12 +250,12 @@ export function buildReflectPrompt(
   return [
     '# Reflect: Memory Consolidation',
     '',
-    `You are performing a reflect — a reflective pass over Jordan's CLAUDE memory files. Synthesize what you've learned recently into durable, well-scoped notes so future sessions can orient quickly.`,
+    `You are performing a reflect — a reflective pass over ${ASSISTANT_NAME} memory files. Synthesize what you've learned recently into durable, well-scoped notes so future sessions can orient quickly.`,
     '',
     'Memory targets:',
     ...targetLines,
     '',
-    'Recent activity stream: see the XML block below. It includes chat discussions, Jordan replies, and Atlas updates.',
+    `Recent activity stream: see the XML block below. It includes chat discussions, ${ASSISTANT_NAME} replies, and Atlas updates.`,
     '',
     '---',
     '',
@@ -262,15 +263,15 @@ export function buildReflectPrompt(
     '',
     '- Read each target CLAUDE file before editing it so you improve what already exists rather than creating duplicates',
     '- Focus especially on the existing `### Reflect Notes` section and the marker block inside it',
-    '- Keep each target scoped correctly: `main` for Jordan lane memory and `global` for cross-surface memory',
-    '- Treat the company graph as canonical for durable product knowledge; memory files should hold concise reminders, boundaries, and workflow cues, not long duplicate docs',
+    `- Keep each target scoped correctly: \`main\` for ${ASSISTANT_NAME} lane memory and \`global\` for cross-surface memory`,
+    '- Treat the shared knowledge graph as canonical for durable product knowledge; memory files should hold concise reminders, boundaries, and workflow cues, not long duplicate docs',
     '',
     '## Phase 2 - Gather recent signal',
     '',
     '- Use the recent activity stream below as the primary source of new signal',
     '- Prioritize repeated patterns, durable clarifications, stable teammate conventions, and code-confirmed behavior over one-off conversation details',
     '- If code truth matters, inspect `/workspace/project` directly before writing memory',
-    '- If durable product/process knowledge belongs in the company graph, call `ask_atlas` so the graph is updated alongside memory when needed',
+    '- If durable product/process knowledge belongs in the shared knowledge graph, call `ask_atlas` so the graph is updated alongside memory when needed',
     "- Don't exhaustively investigate every message; look for things that already seem worth remembering",
     '',
     '## Phase 3 - Consolidate',

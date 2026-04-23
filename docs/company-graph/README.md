@@ -1,7 +1,7 @@
 ---
 id: company-graph-home
 type: index
-owner: jordan
+owner: assistant
 status: active
 last_updated: 2026-04-06
 related:
@@ -12,7 +12,7 @@ related:
 
 # Company Graph
 
-This folder is the canonical knowledge base for Jordan.
+This folder is the canonical knowledge base for the assistant.
 
 Use it to document durable knowledge about your product, workflows, operations, and support rules without depending on scattered chat memory.
 
