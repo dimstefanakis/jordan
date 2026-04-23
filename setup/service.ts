@@ -240,6 +240,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sh -c 'PORT="\${CREDENTIAL_PROXY_PORT:-3001}"; /usr/bin/fuser -k "$PORT"/tcp 2>/dev/null || true'
 ExecStart=${nodePath} ${projectRoot}/dist/index.js
 WorkingDirectory=${projectRoot}
 Restart=always

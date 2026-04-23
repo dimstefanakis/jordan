@@ -58,6 +58,7 @@ After=network.target
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sh -c 'PORT="\${CREDENTIAL_PROXY_PORT:-3001}"; /usr/bin/fuser -k "$PORT"/tcp 2>/dev/null || true'
 ExecStart=${nodePath} ${projectRoot}/dist/index.js
 WorkingDirectory=${projectRoot}
 Restart=always
@@ -152,6 +153,17 @@ describe('systemd unit generation', () => {
     expect(unit).toContain(
       'ExecStart=/usr/bin/node /srv/nanoclaw/dist/index.js',
     );
+  });
+
+  it('clears stale credential-proxy listeners before start', () => {
+    const unit = generateSystemdUnit(
+      '/usr/bin/node',
+      '/srv/nanoclaw',
+      '/home/user',
+      false,
+    );
+    expect(unit).toContain('ExecStartPre=/bin/sh -c');
+    expect(unit).toContain('fuser -k "$PORT"/tcp');
   });
 });
 
