@@ -415,6 +415,10 @@ async function runQuery(
     prompt: stream,
     options: {
       model: process.env.CLAUDE_MODEL || 'claude-opus-4-6',
+      // Prefer the container's configured Claude executable when provided,
+      // rather than relying on SDK launcher auto-detection.
+      pathToClaudeCodeExecutable:
+        process.env.CLAUDE_CODE_EXECUTABLE || undefined,
       cwd: '/workspace/group',
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
