@@ -306,6 +306,10 @@ export async function processTaskIpc(
     schedule_type?: string;
     schedule_value?: string;
     context_mode?: string;
+    command?: string;
+    command_cwd?: string;
+    command_timeout_ms?: number;
+    wake_agent_on_output?: boolean;
     groupFolder?: string;
     chatJid?: string;
     targetJid?: string;
@@ -543,6 +547,106 @@ export async function processTaskIpc(
           { taskId, sourceGroup, targetFolder, contextMode },
           'Task created via IPC',
         );
+      }
+      break;
+
+    case 'schedule_command_task':
+      if (
+        isMain &&
+        data.command &&
+        data.prompt &&
+        data.schedule_type &&
+        data.schedule_value &&
+        data.targetJid
+      ) {
+        const targetJid = data.targetJid as string;
+        const targetGroupEntry = registeredGroups[targetJid];
+
+        if (!targetGroupEntry) {
+          logger.warn(
+            { targetJid },
+            'Cannot schedule command task: target group not registered',
+          );
+          break;
+        }
+
+        const scheduleType = data.schedule_type as 'cron' | 'interval' | 'once';
+        let nextRun: string | null = null;
+
+        if (scheduleType === 'cron') {
+          try {
+            const interval = CronExpressionParser.parse(data.schedule_value, {
+              tz: TIMEZONE,
+            });
+            nextRun = interval.next().toISOString();
+          } catch {
+            logger.warn(
+              { scheduleValue: data.schedule_value },
+              'Invalid command task cron expression',
+            );
+            break;
+          }
+        } else if (scheduleType === 'interval') {
+          const ms = parseInt(data.schedule_value, 10);
+          if (isNaN(ms) || ms <= 0) {
+            logger.warn(
+              { scheduleValue: data.schedule_value },
+              'Invalid command task interval',
+            );
+            break;
+          }
+          nextRun = new Date(Date.now() + ms).toISOString();
+        } else if (scheduleType === 'once') {
+          const date = new Date(data.schedule_value);
+          if (isNaN(date.getTime())) {
+            logger.warn(
+              { scheduleValue: data.schedule_value },
+              'Invalid command task timestamp',
+            );
+            break;
+          }
+          nextRun = date.toISOString();
+        }
+
+        const timeout =
+          typeof data.command_timeout_ms === 'number'
+            ? data.command_timeout_ms
+            : undefined;
+        const contextMode =
+          data.context_mode === 'group' || data.context_mode === 'isolated'
+            ? data.context_mode
+            : 'isolated';
+
+        createTask({
+          id:
+            data.taskId ||
+            `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          group_folder: targetGroupEntry.folder,
+          chat_jid: targetJid,
+          prompt: data.prompt,
+          runner: 'command',
+          command: data.command,
+          command_cwd:
+            typeof data.command_cwd === 'string' ? data.command_cwd : undefined,
+          command_timeout_ms: timeout,
+          wake_agent_on_output: data.wake_agent_on_output === true,
+          schedule_type: scheduleType,
+          schedule_value: data.schedule_value,
+          context_mode: contextMode,
+          next_run: nextRun,
+          status: 'active',
+          created_at: new Date().toISOString(),
+        });
+        logger.info(
+          {
+            sourceGroup,
+            targetFolder: targetGroupEntry.folder,
+            contextMode,
+          },
+          'Command task created via IPC',
+        );
+      } else if (!isMain) {
+        logger.warn({ sourceGroup }, 'Non-main command task blocked');
       }
       break;
 

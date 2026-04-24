@@ -556,6 +556,7 @@ This allows the agent to understand the conversation context even if it wasn't m
 ## Scheduled Tasks
 
 NanoClaw has a built-in scheduler that runs tasks as full agents in their group's context.
+Main-channel users can also schedule command tasks for cheap no-inference polling.
 
 ### How Scheduling Works
 
@@ -571,6 +572,26 @@ NanoClaw has a built-in scheduler that runs tasks as full agents in their group'
 | `cron` | Cron expression | `0 9 * * 1` (Mondays at 9am) |
 | `interval` | Milliseconds | `3600000` (every hour) |
 | `once` | ISO timestamp | `2024-12-25T09:00:00Z` |
+
+### Command Tasks
+
+Command tasks run from the target group's workspace without starting an agent.
+They are available to the main channel only.
+
+Stdout is the command task contract:
+- No stdout: record success silently.
+- Plain text stdout: send that text to the chat.
+- JSON stdout with `wake_agent: true`: wake an agent with the provided `prompt`.
+
+Example JSON stdout:
+
+```json
+{
+  "wake_agent": true,
+  "prompt": "The monitored repository changed. Review the diff and summarize anything important.",
+  "send_message": "Repository change detected."
+}
+```
 
 ### Creating a Task
 

@@ -164,6 +164,51 @@ describe('schedule_task authorization', () => {
   });
 });
 
+describe('schedule_command_task authorization', () => {
+  it('main group can schedule a command task for another group', async () => {
+    await processTaskIpc(
+      {
+        type: 'schedule_command_task',
+        command: 'python3 jobs/check.py',
+        prompt: 'Investigate command output',
+        schedule_type: 'cron',
+        schedule_value: '0 9 * * *',
+        context_mode: 'isolated',
+        targetJid: 'other@g.us',
+        wake_agent_on_output: true,
+      },
+      'whatsapp_main',
+      true,
+      deps,
+    );
+
+    const allTasks = getAllTasks();
+    expect(allTasks.length).toBe(1);
+    expect(allTasks[0].runner).toBe('command');
+    expect(allTasks[0].command).toBe('python3 jobs/check.py');
+    expect(allTasks[0].wake_agent_on_output).toBe(1);
+    expect(allTasks[0].group_folder).toBe('other-group');
+  });
+
+  it('non-main group cannot schedule command tasks', async () => {
+    await processTaskIpc(
+      {
+        type: 'schedule_command_task',
+        command: 'python3 jobs/check.py',
+        prompt: 'Investigate command output',
+        schedule_type: 'cron',
+        schedule_value: '0 9 * * *',
+        targetJid: 'other@g.us',
+      },
+      'other-group',
+      false,
+      deps,
+    );
+
+    expect(getAllTasks().length).toBe(0);
+  });
+});
+
 describe('ask_atlas authorization', () => {
   it('main group can call Atlas', async () => {
     const requestId = 'atlas-main-request';

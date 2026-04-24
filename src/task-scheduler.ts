@@ -1,6 +1,8 @@
-import { ChildProcess } from 'child_process';
+import { ChildProcess, exec } from 'child_process';
+import { promisify } from 'util';
 import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
+import path from 'path';
 
 import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
 import {
@@ -21,6 +23,17 @@ import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
+
+const execAsync = promisify(exec);
+const COMMAND_TASK_MAX_BUFFER = 1024 * 1024;
+const DEFAULT_COMMAND_TASK_TIMEOUT_MS = 5 * 60_000;
+
+type CommandTaskPayload = {
+  wake_agent?: boolean;
+  prompt?: string;
+  send_message?: string;
+  context_mode?: 'group' | 'isolated';
+};
 
 /**
  * Compute the next run time for a recurring task, anchored to the
@@ -76,6 +89,190 @@ export interface SchedulerDependencies {
   sendMessage: (jid: string, text: string) => Promise<void>;
 }
 
+function resolveCommandCwd(task: ScheduledTask, groupDir: string): string {
+  const requested = task.command_cwd?.trim();
+  const cwd = requested
+    ? path.isAbsolute(requested)
+      ? requested
+      : path.resolve(groupDir, requested)
+    : groupDir;
+  if (!fs.existsSync(cwd)) {
+    throw new Error(`Command cwd does not exist: ${requested}`);
+  }
+  const resolved = fs.realpathSync(cwd);
+  const root = fs.realpathSync(groupDir);
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Command cwd must stay inside the group folder');
+  }
+  return resolved;
+}
+
+function parseCommandPayload(stdout: string): CommandTaskPayload | null {
+  const trimmed = stdout.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as CommandTaskPayload;
+    }
+  } catch {
+    /* plain stdout is a valid notification/wake signal */
+  }
+  return null;
+}
+
+async function wakeAgentFromCommandTask(
+  task: ScheduledTask,
+  deps: SchedulerDependencies,
+  group: RegisteredGroup,
+  prompt: string,
+  contextMode: 'group' | 'isolated',
+): Promise<string | null> {
+  let result: string | null = null;
+  let error: string | null = null;
+  const sessions = deps.getSessions();
+  const sessionId =
+    contextMode === 'group' ? sessions[task.group_folder] : undefined;
+
+  const output = await runContainerAgent(
+    group,
+    {
+      prompt,
+      sessionId,
+      groupFolder: task.group_folder,
+      chatJid: task.chat_jid,
+      isMain: group.isMain === true,
+      isScheduledTask: true,
+      assistantName: ASSISTANT_NAME,
+    },
+    (proc, containerName) =>
+      deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
+    async (streamedOutput: ContainerOutput) => {
+      if (streamedOutput.result) {
+        result = streamedOutput.result;
+        await deps.sendMessage(task.chat_jid, streamedOutput.result);
+        deps.queue.closeStdin(task.chat_jid);
+      }
+      if (streamedOutput.status === 'success') {
+        deps.queue.notifyIdle(task.chat_jid);
+        deps.queue.closeStdin(task.chat_jid);
+      }
+      if (streamedOutput.status === 'error') {
+        error = streamedOutput.error || 'Unknown error';
+      }
+    },
+  );
+
+  if (output.status === 'error') {
+    throw new Error(output.error || error || 'Agent wake failed');
+  }
+  return output.result || result;
+}
+
+async function runCommandTask(
+  task: ScheduledTask,
+  deps: SchedulerDependencies,
+  group: RegisteredGroup,
+  groupDir: string,
+  startedAt: string,
+  startTime: number,
+): Promise<void> {
+  let result: string | null = null;
+  let error: string | null = null;
+
+  try {
+    const command = task.command?.trim();
+    if (!command) {
+      throw new Error('Command task is missing a command');
+    }
+
+    const cwd = resolveCommandCwd(task, groupDir);
+    const timeout =
+      task.command_timeout_ms && task.command_timeout_ms > 0
+        ? task.command_timeout_ms
+        : DEFAULT_COMMAND_TASK_TIMEOUT_MS;
+
+    const { stdout, stderr } = await execAsync(command, {
+      cwd,
+      timeout,
+      maxBuffer: COMMAND_TASK_MAX_BUFFER,
+      env: {
+        HOME: process.env.HOME,
+        PATH: process.env.PATH,
+        SHELL: process.env.SHELL,
+        TZ: process.env.TZ,
+        NANOCLAW_GROUP_FOLDER: task.group_folder,
+        NANOCLAW_CHAT_JID: task.chat_jid,
+      },
+    });
+
+    const stdoutText = stdout.trim();
+    const stderrText = stderr.trim();
+    const payload = parseCommandPayload(stdoutText);
+
+    if (payload?.send_message) {
+      await deps.sendMessage(task.chat_jid, payload.send_message);
+      result = payload.send_message;
+    } else if (stdoutText && !payload) {
+      await deps.sendMessage(task.chat_jid, stdoutText);
+      result = stdoutText;
+    } else {
+      result = stderrText || 'Command completed';
+    }
+
+    const shouldWake =
+      payload?.wake_agent || (!!stdoutText && !!task.wake_agent_on_output);
+    if (shouldWake) {
+      const wakePrompt =
+        payload?.prompt ||
+        `${task.prompt}\n\nCommand output:\n${stdoutText || result || 'No output.'}`;
+      const wakeResult = await wakeAgentFromCommandTask(
+        task,
+        deps,
+        group,
+        wakePrompt,
+        payload?.context_mode || task.context_mode || 'isolated',
+      );
+      if (wakeResult) result = wakeResult;
+    }
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+    logger.error({ taskId: task.id, error }, 'Command task failed');
+  }
+
+  const durationMs = Date.now() - startTime;
+
+  logTaskRun({
+    task_id: task.id,
+    run_at: new Date().toISOString(),
+    duration_ms: durationMs,
+    status: error ? 'error' : 'success',
+    result,
+    error,
+  });
+  logAgentTaskOutcome({
+    source: 'scheduled_task',
+    group_folder: task.group_folder,
+    chat_jid: task.chat_jid,
+    task_id: task.id,
+    prompt: task.command || task.prompt,
+    result: error ? error : result,
+    status: error ? 'error' : 'success',
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    duration_ms: durationMs,
+  });
+
+  const nextRun = computeNextRun(task);
+  const resultSummary = error
+    ? `Error: ${error}`
+    : result
+      ? result.slice(0, 200)
+      : 'Completed';
+  updateTaskAfterRun(task.id, nextRun, resultSummary);
+}
+
 async function runTask(
   task: ScheduledTask,
   deps: SchedulerDependencies,
@@ -128,6 +325,11 @@ async function runTask(
       result: null,
       error: `Group not found: ${task.group_folder}`,
     });
+    return;
+  }
+
+  if (task.runner === 'command') {
+    await runCommandTask(task, deps, group, groupDir, startedAt, startTime);
     return;
   }
 
@@ -253,6 +455,7 @@ async function runTask(
 }
 
 let schedulerRunning = false;
+let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function startSchedulerLoop(deps: SchedulerDependencies): void {
   if (schedulerRunning) {
@@ -284,7 +487,7 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
       logger.error({ err }, 'Error in scheduler loop');
     }
 
-    setTimeout(loop, SCHEDULER_POLL_INTERVAL);
+    schedulerTimer = setTimeout(loop, SCHEDULER_POLL_INTERVAL);
   };
 
   loop();
@@ -292,5 +495,9 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
 
 /** @internal - for tests only. */
 export function _resetSchedulerLoopForTests(): void {
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
   schedulerRunning = false;
 }

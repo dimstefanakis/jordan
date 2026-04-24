@@ -499,6 +499,133 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
 );
 
 server.tool(
+  'schedule_command_task',
+  `Schedule a cron/interval/once command job that runs without waking an agent unless its output asks for one. Main group only.
+
+The command runs from the target group's workspace by default. Use this for cheap polling scripts such as Python, Node, bash, git checks, or health checks.
+
+STDOUT CONTRACT:
+• Print nothing to complete silently.
+• Print plain text to send that text to the chat.
+• Print JSON like {"wake_agent":true,"prompt":"Investigate this change","send_message":"Change detected"} to wake an agent.
+
+For Python scripts, prefer commands like: python3 jobs/check.py`,
+  {
+    command: z
+      .string()
+      .describe('Shell command to run, e.g. "python3 jobs/check.py"'),
+    prompt: z
+      .string()
+      .describe(
+        'Default prompt to use if wake_agent_on_output is true and stdout is plain text.',
+      ),
+    schedule_type: z.enum(['cron', 'interval', 'once']),
+    schedule_value: z.string(),
+    context_mode: z.enum(['group', 'isolated']).default('isolated'),
+    command_cwd: z
+      .string()
+      .optional()
+      .describe('Optional cwd under /workspace/group. Defaults to group root.'),
+    command_timeout_ms: z
+      .number()
+      .int()
+      .positive()
+      .max(30 * 60 * 1000)
+      .optional()
+      .describe('Command timeout in milliseconds. Defaults to 5 minutes.'),
+    wake_agent_on_output: z
+      .boolean()
+      .default(false)
+      .describe('Wake an agent when stdout is non-empty plain text.'),
+    target_group_jid: z
+      .string()
+      .optional()
+      .describe('(Main group only) JID of the group to schedule for.'),
+  },
+  async (args) => {
+    if (!isMain) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: 'Only the main group can schedule command tasks.',
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    if (args.schedule_type === 'cron') {
+      try {
+        CronExpressionParser.parse(args.schedule_value);
+      } catch {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid cron: "${args.schedule_value}".`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    } else if (args.schedule_type === 'interval') {
+      const ms = parseInt(args.schedule_value, 10);
+      if (isNaN(ms) || ms <= 0) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid interval: "${args.schedule_value}".`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    } else {
+      const date = new Date(args.schedule_value);
+      if (isNaN(date.getTime())) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Invalid timestamp: "${args.schedule_value}".`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    writeIpcFile(TASKS_DIR, {
+      type: 'schedule_command_task',
+      taskId,
+      command: args.command,
+      prompt: args.prompt,
+      schedule_type: args.schedule_type,
+      schedule_value: args.schedule_value,
+      context_mode: args.context_mode || 'isolated',
+      command_cwd: args.command_cwd || undefined,
+      command_timeout_ms: args.command_timeout_ms || undefined,
+      wake_agent_on_output: args.wake_agent_on_output,
+      targetJid: args.target_group_jid || chatJid,
+      createdBy: groupFolder,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Command task ${taskId} scheduled: ${args.schedule_type} - ${args.schedule_value}`,
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
   'list_tasks',
   "List all scheduled tasks. From main: shows all tasks. From other groups: shows only that group's tasks.",
   {},

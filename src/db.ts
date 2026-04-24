@@ -44,6 +44,11 @@ function createSchema(database: Database.Database): void {
       group_folder TEXT NOT NULL,
       chat_jid TEXT NOT NULL,
       prompt TEXT NOT NULL,
+      runner TEXT DEFAULT 'agent',
+      command TEXT,
+      command_cwd TEXT,
+      command_timeout_ms INTEGER,
+      wake_agent_on_output INTEGER DEFAULT 0,
       schedule_type TEXT NOT NULL,
       schedule_value TEXT NOT NULL,
       next_run TEXT,
@@ -109,6 +114,20 @@ function createSchema(database: Database.Database): void {
     );
   } catch {
     /* column already exists */
+  }
+
+  for (const statement of [
+    `ALTER TABLE scheduled_tasks ADD COLUMN runner TEXT DEFAULT 'agent'`,
+    `ALTER TABLE scheduled_tasks ADD COLUMN command TEXT`,
+    `ALTER TABLE scheduled_tasks ADD COLUMN command_cwd TEXT`,
+    `ALTER TABLE scheduled_tasks ADD COLUMN command_timeout_ms INTEGER`,
+    `ALTER TABLE scheduled_tasks ADD COLUMN wake_agent_on_output INTEGER DEFAULT 0`,
+  ]) {
+    try {
+      database.exec(statement);
+    } catch {
+      /* column already exists */
+    }
   }
 
   // Add is_bot_message column if it doesn't exist (migration for existing DBs)
@@ -481,14 +500,19 @@ export function createTask(
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, runner, command, command_cwd, command_timeout_ms, wake_agent_on_output, schedule_type, schedule_value, context_mode, next_run, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
     task.group_folder,
     task.chat_jid,
     task.prompt,
+    task.runner || 'agent',
+    task.command || null,
+    task.command_cwd || null,
+    task.command_timeout_ms || null,
+    task.wake_agent_on_output ? 1 : 0,
     task.schedule_type,
     task.schedule_value,
     task.context_mode || 'isolated',

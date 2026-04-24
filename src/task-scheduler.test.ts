@@ -1,6 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _initTestDatabase, createTask, getTaskById } from './db.js';
+
+vi.mock('./container-runner.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./container-runner.js')>();
+  return {
+    ...actual,
+    runContainerAgent: vi.fn(async (_group, _input, _onProcess, onOutput) => {
+      await onOutput?.({ status: 'success', result: 'agent woke up' });
+      return { status: 'success', result: 'agent woke up' };
+    }),
+  };
+});
+
+import { runContainerAgent } from './container-runner.js';
 import {
   _resetSchedulerLoopForTests,
   computeNextRun,
@@ -125,5 +138,121 @@ describe('task scheduler', () => {
     const offset =
       (new Date(nextRun!).getTime() - new Date(scheduledTime).getTime()) % ms;
     expect(offset).toBe(0);
+  });
+
+  it('runs command tasks silently when there is no stdout', async () => {
+    const enqueuePromise: Promise<void>[] = [];
+    const sendMessage = vi.fn(async () => {});
+
+    createTask({
+      id: 'command-silent',
+      group_folder: 'other-group',
+      chat_jid: 'other@g.us',
+      prompt: 'Only wake if there is output',
+      runner: 'command',
+      command: 'true',
+      schedule_type: 'once',
+      schedule_value: '2026-01-01T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: new Date(Date.now() - 1000).toISOString(),
+      status: 'active',
+      created_at: '2026-01-01T00:00:00.000Z',
+    });
+
+    startSchedulerLoop({
+      registeredGroups: () => ({
+        'other@g.us': {
+          name: 'Other',
+          folder: 'other-group',
+          trigger: '@Andy',
+          added_at: '2024-01-01T00:00:00.000Z',
+        },
+      }),
+      getSessions: () => ({}),
+      queue: {
+        enqueueTask: (
+          _groupJid: string,
+          _taskId: string,
+          fn: () => Promise<void>,
+        ) => {
+          const promise = fn();
+          enqueuePromise.push(promise);
+          return promise;
+        },
+        closeStdin: vi.fn(),
+        notifyIdle: vi.fn(),
+      } as any,
+      onProcess: () => {},
+      sendMessage,
+    });
+
+    await Promise.all(enqueuePromise);
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(runContainerAgent).not.toHaveBeenCalled();
+    expect(getTaskById('command-silent')?.status).toBe('completed');
+  });
+
+  it('lets command task JSON stdout wake an agent', async () => {
+    vi.mocked(runContainerAgent).mockClear();
+    const enqueuePromise: Promise<void>[] = [];
+    const sendMessage = vi.fn(async () => {});
+
+    createTask({
+      id: 'command-wake',
+      group_folder: 'other-group',
+      chat_jid: 'other@g.us',
+      prompt: 'Default wake prompt',
+      runner: 'command',
+      command:
+        'printf \'{"wake_agent":true,"prompt":"Investigate the changed thing","send_message":"Change detected"}\\n\'',
+      schedule_type: 'once',
+      schedule_value: '2026-01-01T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: new Date(Date.now() - 1000).toISOString(),
+      status: 'active',
+      created_at: '2026-01-01T00:00:00.000Z',
+    });
+
+    startSchedulerLoop({
+      registeredGroups: () => ({
+        'other@g.us': {
+          name: 'Other',
+          folder: 'other-group',
+          trigger: '@Andy',
+          added_at: '2024-01-01T00:00:00.000Z',
+        },
+      }),
+      getSessions: () => ({}),
+      queue: {
+        enqueueTask: (
+          _groupJid: string,
+          _taskId: string,
+          fn: () => Promise<void>,
+        ) => {
+          const promise = fn();
+          enqueuePromise.push(promise);
+          return promise;
+        },
+        closeStdin: vi.fn(),
+        notifyIdle: vi.fn(),
+      } as any,
+      onProcess: () => {},
+      sendMessage,
+    });
+
+    await Promise.all(enqueuePromise);
+
+    expect(sendMessage).toHaveBeenCalledWith('other@g.us', 'Change detected');
+    expect(runContainerAgent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        prompt: 'Investigate the changed thing',
+        isScheduledTask: true,
+      }),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(getTaskById('command-wake')?.status).toBe('completed');
   });
 });

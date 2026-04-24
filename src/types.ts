@@ -74,6 +74,11 @@ export interface ScheduledTask {
   group_folder: string;
   chat_jid: string;
   prompt: string;
+  runner?: 'agent' | 'command';
+  command?: string | null;
+  command_cwd?: string | null;
+  command_timeout_ms?: number | null;
+  wake_agent_on_output?: boolean | number | null;
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
